@@ -1,4 +1,4 @@
-package com.example.topiclingo;
+package com.credeurstudios.topiclingo;
 
 /**
  * This file is used to force the Java compiler to use Java 17 compatibility.

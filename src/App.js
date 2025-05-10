@@ -25,7 +25,7 @@ const createNewSaveData = (playerName = 'New Game') => ({
   saveId: Date.now(),
   lastPlayed: Date.now(),
   playerName,
-  credits: 250,
+  credits: 1250,
   purchasedTopics: ['colorNames', 'fruitNames', 'animalNames'],
   currentTopic: 'colorNames',
   hintTokens: 3,
@@ -123,6 +123,144 @@ childrensToys: [
     'spinner', 'magnet', 'telescope', 'microscope', 'binoculars', 'compass', 'kaleidoscope', 'board-game', 'card-game', 'video-game'
 ],
 
+farmAnimals: [
+    'chicken', 'cow', 'goat', 'horse', 'sheep', 'pig', 'donkey', 'turkey', 'duck', 'goose',
+    'llama', 'alpaca', 'rabbit', 'rooster', 'barn', 'hay', 'tractor', 'farmer', 'field', 'fence',
+    'pasture', 'trough', 'milk', 'eggs', 'wool', 'plow', 'crop', 'silo', 'bull', 'calf',
+    'foal', 'kid', 'lamb', 'piglet', 'manure', 'stable', 'coop', 'ram', 'ewe'
+],
+zooAnimals: [ // Note: Some overlap with existing 'animalNames' is likely, this is by user request
+    'lion', 'tiger', 'elephant', 'giraffe', 'monkey', 'zebra', 'panda', 'rhino', 'bear', 'hippo',
+    'flamingo', 'gorilla', 'kangaroo', 'penguin', 'lemur', 'camel', 'ostrich', 'wolf', 'jaguar', 'cheetah',
+    'koala', 'alligator', 'antelope', 'otter', 'chimpanzee', 'sloth', 'meerkat', 'tapir', 'okapi', 'bison',
+    'armadillo', 'porcupine', 'capybara', 'redpanda', 'snowleopard', 'lemur', 'gibbon', 'orangutan', 'mandrill'
+],
+oceanCreatures: [ // Focuses on creatures, distinct from broader "Marine Life" if that includes plants/terms
+    'whale', 'dolphin', 'shark', 'squid', 'octopus', 'jellyfish', 'seahorse', 'stingray', 'eel', 'clownfish',
+    'angelfish', 'starfish', 'crab', 'lobster', 'shrimp', 'turtle', 'manatee', 'seal', 'walrus', 'orca',
+    'narwhal', 'pufferfish', 'swordfish', 'marlin', 'barracuda', 'anemone', 'urchin', 'clam', 'oyster', 'coral',
+    'krill', 'plankton', 'barnacle', 'mussel', 'scallop', 'sealion', 'slug', 'worm', 'sponge'
+],
+wildflowers: [
+    'daisy', 'poppy', 'lupine', 'bluebell', 'sunflower', 'thistle', 'buttercup', 'dandelion', 'clover', 'aster',
+    'primrose', 'violet', 'orchid', 'columbine', 'foxglove', 'iris', 'lavender', 'chicory', 'coneflower', 'yarrow',
+    'tansy', 'verbena', 'cosmos', 'phlox', 'goldenrod', 'milkweed', 'ragwort', 'blazingstar', 'bergamot', 'saxifrage',
+    'gentian', 'bellflower', 'heather', 'broom', 'gorse', 'speedwell', 'lobelia', 'cowslip', 'pasqueflower'
+],
+commonGardenFlowers: [
+    'rose', 'tulip', 'lily', 'pansy', 'marigold', 'petunia', 'daffodil', 'hyacinth', 'iris', 'peony',
+    'begonia', 'geranium', 'zinnia', 'cosmos', 'impatiens', 'carnation', 'chrysanthemum', 'dahlia', 'hosta', 'lavender',
+    'lilac', 'salvia', 'snapdragon', 'sunflower', 'verbena', 'aster', 'calendula', 'clematis', 'gladiolus', 'lobelia',
+    'nasturtium', 'phlox', 'stock', 'viola', 'sweetpea', 'fuchsia', 'hollyhock', 'delphinium', 'alyssum'
+],
+nocturnalAnimals: [
+    'owl', 'bat', 'fox', 'raccoon', 'badger', 'moth', 'coyote', 'opossum', 'skunk', 'hedgehog',
+    'firefly', 'frog', 'toad', 'cricket', 'mouse', 'rat', 'hamster', 'gerbil', 'tarantula', 'scorpion',
+    'nightjar', 'kiwi', 'lynx', 'bobcat', 'jaguar', 'leopard', 'panther', 'hyena', 'aardvark', 'porcupine',
+    'wombat', 'sugar-glider', 'flying-squirrel', 'genet', 'civet', 'bushbaby', 'armadillo', 'bandicoot', 'bilby'
+],
+mountainAnimals: [
+    'goat', 'eagle', 'bear', 'sheep', 'puma', 'marmot', 'ibex', 'condor', 'llama', 'alpaca',
+    'yak', 'pika', 'chinchilla', 'lynx', 'wolf', 'fox', 'deer', 'elk', 'bighorn', 'snowleopard',
+    'chamois', 'kea', 'raven', 'vicuna', 'guanaco', 'takin', 'serow', 'goral', 'markhor', 'argali',
+    'ptarmigan', 'wallaby', 'mountainlion', 'coyote', 'weasel', 'stoat', 'vulture', 'hawk', 'falcon'
+],
+dogBreeds: [ // Kept as single words for consistency
+    'beagle', 'poodle', 'boxer', 'collie', 'bulldog', 'terrier', 'labrador', 'retriever', 'shepherd', 'spaniel',
+    'husky', 'corgi', 'dachshund', 'dalmatian', 'rottweiler', 'doberman', 'greyhound', 'mastiff', 'pointer', 'setter',
+    'shihtzu', 'chihuahua', 'pug', 'maltese', 'pinscher', 'schnauzer', 'akita', 'basenji', 'bloodhound', 'chowchow',
+    'greatdane', 'newfoundland', 'borzoi', 'whippet', 'airedale', 'bichon', 'bostonterrier', 'sharpei', 'vizsla'
+],
+catBreeds: [ // Kept as single words
+    'siamese', 'persian', 'mainecoon', 'bengal', 'sphinx', 'ragdoll', 'abyssinian', 'birman', 'burmese', 'chartreux',
+    'cornishrex', 'devonrex', 'manx', 'ocicat', 'oriental', 'russianblue', 'scottishfold', 'siberian', 'somali', 'tonkinese',
+    'turkishangora', 'balinese', 'bombay', 'egyptianmau', 'havana', 'javanese', 'korat', 'laperm', 'nebelung', 'pixiebob',
+    'savannah', 'selkirkrex', 'snowshoe', 'toyger', 'chantilly', 'cymric', 'khaomanee', 'minskin', 'peterbald'
+],
+bakeryGoods: [
+    'bread', 'croissant', 'muffin', 'bagel', 'scone', 'pretzel', 'donut', 'cake', 'pie', 'cookie',
+    'cupcake', 'brownie', 'tart', 'eclair', 'cannoli', 'roll', 'bun', 'baguette', 'challah', 'brioche',
+    'focaccia', 'pita', 'sourdough', 'strudel', 'danish', 'biscotti', 'macaron', 'pavlova', 'turnover', 'puff',
+    'cobbler', 'crumble', 'financier', 'madeleine', 'panettone', 'stollen', 'barmbrack', 'shortbread', 'florentine'
+],
+typesOfCheese: [
+    'cheddar', 'brie', 'gouda', 'feta', 'mozzarella', 'parmesan', 'provolone', 'swiss', 'bluecheese', 'goatcheese', // bluecheese, goatcheese
+    'creamcheese', 'ricotta', 'edam', 'emmental', 'gorgonzola', 'havarti', 'limburger', 'manchego', 'mascarpone', 'muenster',
+    'neufchatel', 'pecorino', 'romano', 'roquefort', 'stilton', 'asiago', 'camembert', 'colby', 'cotija', 'halloumi',
+    'gruyere', 'fontina', 'raclette', 'paneer', 'quesofresco', 'burrata', 'stracchino', 'teleme', 'wensleydale'
+],
+coffeeAndTeaTerms: [
+    'espresso', 'latte', 'mocha', 'oolong', 'chai', 'herbal', 'brew', 'filter', 'bean', 'grind',
+    'roast', 'steep', 'teapot', 'kettle', 'mug', 'cup', 'saucer', 'drip', 'frenchpress', 'pourover', // pour-over to pourover
+    'americano', 'cappuccino', 'macchiato', 'cortado', 'flatwhite', 'greentea', 'blacktea', 'whitetea', 'puerh', 'darjeeling', // green-tea to greentea etc.
+    'ceylon', 'matcha', 'sencha', 'assam', 'earlgrey', 'tisane', 'infusion', 'barista', 'portafilter'
+],
+breakfastFoods: [
+    'pancake', 'waffle', 'cereal', 'bacon', 'toast', 'oatmeal', 'yogurt', 'egg', 'sausage', 'ham',
+    'omelette', 'frittata', 'quiche', 'muffin', 'scone', 'bagel', 'croissant', 'smoothie', 'granola', 'fruit',
+    'juice', 'coffee', 'tea', 'milk', 'syrup', 'butter', 'jam', 'jelly', 'hashbrowns', 'burrito',
+    'porridge', 'grits', 'kipper', 'lox', 'blintz', 'crepe', 'dosa', 'idli', 'congee'
+],
+schoolSupplies: [
+    'pencil', 'eraser', 'notebook', 'ruler', 'crayon', 'binder', 'backpack', 'pen', 'marker', 'highlighter',
+    'folder', 'glue', 'scissors', 'paper', 'textbook', 'calculator', 'protractor', 'compass', 'sharpener', 'stapler',
+    'planner', 'agenda', 'lunchbox', 'thermos', 'chalk', 'whiteboard', 'dictionary', 'thesaurus', 'globe', 'atlas',
+    'clipboard', 'indexcard', 'pouch', 'locker', 'desk', 'chair', 'computer', 'tablet', 'paints'
+],
+officeEquipment: [
+    'printer', 'scanner', 'stapler', 'monitor', 'keyboard', 'shredder', 'copier', 'faxmachine', 'telephone', 'computer', // fax-machine to faxmachine
+    'laptop', 'mouse', 'projector', 'whiteboard', 'marker', 'pen', 'pencil', 'paper', 'folder', 'binder',
+    'filecabinet', 'desk', 'chair', 'lamp', 'calculator', 'mousepad', 'headset', 'webcam', 'modem', 'router',
+    'paperclip', 'thumbtack', 'envelope', 'postit', 'organizer', 'shredder', 'laminator', 'cubicle', 'watercooler'
+],
+campingGear: [
+    'tent', 'sleepingbag', 'lantern', 'backpack', 'campfire', 'cooler', 'stove', 'fuel', 'mattress', 'pillow',
+    'chair', 'hammock', 'rope', 'tarp', 'firstaidkit', 'knife', 'axe', 'hatchet', 'boots', 'map', // first-aid to firstaidkit
+    'compass', 'waterbottle', 'filter', 'matches', 'lighter', 'bugspray', 'sunscreen', 'flashlight', 'headlamp', 'cookware',
+    'utensils', 'binocular', 'gps', 'tentpole', 'guyline', 'rainfly', 'groundcloth', 'bearcanister', 'trekkingpole'
+],
+gardeningSupplies: [
+    'shovel', 'rake', 'hose', 'seeds', 'fertilizer', 'trowel', 'gloves', 'soil', 'compost', 'mulch',
+    'shears', 'pruners', 'spade', 'fork', 'hoe', 'sprinkler', 'wateringcan', 'wheelbarrow', 'pots', 'planters',
+    'trellis', 'stakes', 'labels', 'weedkiller', 'pesticide', 'netting', 'kneelingpad', 'hat', 'boots', 'loppers',
+    'cultivator', 'edger', 'dibber', 'bulbplanter', 'soiltestkit', 'coldframe', 'greenhouse', 'rowcover', 'gardencloche'
+],
+thingsInAGarage: [
+    'car', 'tools', 'ladder', 'bicycle', 'mower', 'workbench', 'shelf', 'storagebin', 'boxes', 'paintcan', // storage-bin, paint-can
+    'oil', 'antifreeze', 'tires', 'jack', 'wrench', 'screwdriver', 'hammer', 'drill', 'saw', 'hose',
+    'rake', 'shovel', 'broom', 'freezer', 'motorcycle', 'scooter', 'sportsgear', 'toolbox', 'vise', 'workbench',
+    'compressor', 'generator', 'vacuum', 'chainsaw', 'leafblower', 'snowblower', 'workbenchlight', 'pegboard', 'shelvingunit'
+],
+winterSports: [
+    'skiing', 'snowboard', 'hockey', 'curling', 'bobsled', 'luge', 'iceskating', 'biathlon', 'skijumping', 'crosscountryskiing', // ice-skating etc.
+    'alpineskiing', 'freestyleskiing', 'skeleton', 'speedskating', 'figureskating', 'iceclimbing', 'snowshoeing', 'bandy', 'broomball', 'skibobbing',
+    'skijoring', 'snowmobiling', 'dogsledding', 'icefishing', 'powder', 'piste', 'slalom', 'moguls', 'telemark', 'snowkiting',
+    'iceyachting', 'yukigassen', 'skitouring', 'splitboarding', 'icecross', 'ringette', 'pondhockey', 'shinny', 'snowpolo'
+],
+summerActivities: [
+    'swimming', 'barbecue', 'picnic', 'hiking', 'surfing', 'camping', 'fishing', 'boating', 'kayaking', 'canoeing',
+    'sailing', 'volleyball', 'sunbathing', 'cycling', 'running', 'gardening', 'frisbee', 'kiteflying', 'waterskiing', 'jetskiing',
+    'snorkeling', 'diving', 'beachcombing', 'bonfire', 'fireworks', 'festival', 'concert', 'travel', 'vacation', 'roadtrip',
+    'stargazing', 'backpacking', 'climbing', 'rafting', 'tubing', 'wakeboarding', 'parasailing', 'ziplining', 'outdoorcinema'
+],
+unitsOfMeasurement: [
+    'meter', 'liter', 'gram', 'inch', 'pound', 'mile', 'second', 'volt', 'watt', 'ampere',
+    'ohm', 'joule', 'newton', 'pascal', 'hertz', 'kelvin', 'celsius', 'fahrenheit', 'calorie', 'decibel',
+    'lumen', 'candela', 'mole', 'acre', 'hectare', 'gallon', 'quart', 'pint', 'cup', 'ounce',
+    'ton', 'stone', 'foot', 'yard', 'fathom', 'knot', 'league', 'parsec', 'lightyear', 'angstrom'
+],
+geologicalFeatures: [
+    'mountain', 'valley', 'river', 'canyon', 'volcano', 'glacier', 'plateau', 'delta', 'peninsula', 'island',
+    'archipelago', 'atoll', 'fjord', 'geyser', 'hotspring', 'cave', 'cavern', 'dune', 'mesa', 'butte',
+    'plain', 'basin', 'reef', 'stalactite', 'stalagmite', 'moraine', 'esker', 'drumlin', 'fault', 'magma',
+    'lava', 'crater', 'caldera', 'summit', 'ridge', 'gorge', 'isthmus', 'lagoon', 'sound'
+],
+thingsAtAnAirport: [
+    'airplane', 'runway', 'terminal', 'passport', 'luggage', 'pilot', 'gate', 'boardingpass', 'security', 'customs',
+    'immigration', 'baggageclaim', 'checkin', 'departure', 'arrival', 'controltower', 'hangar', 'taxiway', 'concourse', 'dutyfree',
+    'lounge', 'shuttle', 'conveyorbelt', 'trolley', 'scanner', 'metaldetector', 'flightattendant', 'cockpit', 'jetbridge', 'airspeedindicator', // airspeed-indicator
+    'altimeter', 'carousel', 'jetfuel', 'airsickbag', 'overheadbin', 'seatbelt', 'windowseat', 'aisleseat', 'groundcrew'
+],
 // INTERMEDIATE LEVEL
 kitchenUtensils: [
     'spoon', 'knife', 'fork', 'plate', 'cup', 'pan', 'pot', 'blender', 'mixer', 'oven',
@@ -423,6 +561,29 @@ const formatTopicName = (topicKey) => {
     clothingItems: 'Clothing Items',
     weatherTerms: 'Weather Terms',
     childrensToys: 'Children\'s Toys',
+    farmAnimals: 'Farm Animals',
+    zooAnimals: 'Zoo Animals',
+    oceanCreatures: 'Ocean Creatures',
+    wildflowers: 'Wildflowers',
+    commonGardenFlowers: 'Common Garden Flowers',
+    nocturnalAnimals: 'Nocturnal Animals',
+    mountainAnimals: 'Mountain Animals',
+    dogBreeds: 'Dog Breeds',
+    catBreeds: 'Cat Breeds',
+    bakeryGoods: 'Bakery Goods',
+    typesOfCheese: 'Types of Cheese',
+    coffeeAndTeaTerms: 'Coffee & Tea Terms',
+    breakfastFoods: 'Breakfast Foods',
+    schoolSupplies: 'School Supplies',
+    officeEquipment: 'Office Equipment',
+    campingGear: 'Camping Gear',
+    gardeningSupplies: 'Gardening Supplies',
+    thingsInAGarage: 'Things in a Garage',
+    winterSports: 'Winter Sports',
+    summerActivities: 'Summer Activities',
+    unitsOfMeasurement: 'Units of Measurement',
+    geologicalFeatures: 'Geological Features',
+    thingsAtAnAirport: 'Things at an Airport',
     kitchenUtensils: 'Kitchen Utensils',
     beachItems: 'Beach Items',
     desserts: 'Desserts',
@@ -1238,65 +1399,78 @@ const TopicLingo = () => {
     return score;
   };
 
-  const checkWord = () => {
-    playButtonSound();
-    const word = inputValue.toLowerCase().trim();
+const checkWord = () => {
+  playButtonSound();
+  // Normalize the input: trim whitespace, convert to lowercase, and remove all internal spaces.
+  const normalizedInput = inputValue.trim().toLowerCase().replace(/\s+/g, '');
 
-    if (word.length < 3) {
-      setMessage('Too short! (min 3 letters)');
-      setTimeout(() => setMessage(''), 2000);
-      return;
+  if (normalizedInput.length < 3) { // Check length of the normalized input
+    setMessage('Too short! (min 3 letters)');
+    setTimeout(() => setMessage(''), 2000);
+    setInputValue(''); // Clear input even if too short
+    return;
+  }
+
+  // The currentLetters are single characters, so no normalization needed for them.
+  // Check if the normalized input contains the required letters.
+  // This check might be slightly less intuitive if the original word had spaces,
+  // e.g., for "ice cream" and letters 'c', 'e', it checks if "icecream" has 'c' and 'e'. This is usually fine.
+  if (!normalizedInput.includes(currentLetters[0]) || !normalizedInput.includes(currentLetters[1])) {
+    setMessage(`Must use both '${currentLetters[0].toUpperCase()}' and '${currentLetters[1].toUpperCase()}'!`);
+    setTimeout(() => setMessage(''), 2000);
+    setInputValue(''); // Clear input
+    return;
+  }
+
+  if (wordsFound.includes(normalizedInput)) { // wordsFound should store the normalized form
+    setMessage('Already found!');
+    setTimeout(() => setMessage(''), 2000);
+    setInputValue(''); // Clear input
+    return;
+  }
+
+  // possibleWords are already in the normalized, lowercase, space-less format from your topicWords
+  if (possibleWords.includes(normalizedInput)) {
+    // Word found!
+    // Add the normalized (and matched) form to wordsFound
+    const newWordsFound = [...wordsFound, normalizedInput].sort();
+    setWordsFound(newWordsFound);
+
+    let earnedForThisWord = calculateWordScore(normalizedInput); // Calculate score based on the matched (normalized) word
+
+    if (doubleCreditsActive) {
+      earnedForThisWord *= 2;
     }
+    
+    setCreditsEarned(prev => prev + earnedForThisWord);
+    // creditsEarnedRef.current is updated by its own useEffect
 
-    if (!word.includes(currentLetters[0]) || !word.includes(currentLetters[1])) {
-      setMessage(`Must use both '${currentLetters[0]}' and '${currentLetters[1]}'!`);
-      setTimeout(() => setMessage(''), 2000);
-      return;
-    }
-
-    if (wordsFound.includes(word)) {
-      setMessage('Already found!');
-      setTimeout(() => setMessage(''), 2000);
-      return;
-    }
-
-    if (possibleWords.includes(word)) {
-      const newWordsFound = [...wordsFound, word].sort();
-      setWordsFound(newWordsFound);
-
-      let earnedForThisWord = calculateWordScore(word);
+    if (newWordsFound.length === possibleWords.length) {
+      const baseAllWordsBonus = 25;
+      const dynamicBonusPart = possibleWords.length * 2;
+      let totalAllWordsBonus = baseAllWordsBonus + dynamicBonusPart;
 
       if (doubleCreditsActive) {
-        earnedForThisWord *= 2;
+        totalAllWordsBonus *= 2;
       }
-
-      setCreditsEarned(prev => prev + earnedForThisWord);
-      // creditsEarnedRef.current is updated by its own useEffect
-
-      if (newWordsFound.length === possibleWords.length) {
-        const baseAllWordsBonus = 25;
-        const dynamicBonusPart = possibleWords.length * 2;
-        let totalAllWordsBonus = baseAllWordsBonus + dynamicBonusPart;
-
-        if (doubleCreditsActive) {
-          totalAllWordsBonus *= 2;
-        }
-
-        setCreditsEarned(prev => prev + totalAllWordsBonus);
-        setMessage(`All words found! +${totalAllWordsBonus} bonus credits`);
-        setTimeout(() => {
-          endGame();
-        }, 1500);
-      } else {
-        setMessage(`Word found! +${earnedForThisWord} credits`);
-        setTimeout(() => setMessage(''), 2000);
-      }
+      
+      setCreditsEarned(prev => prev + totalAllWordsBonus);
+      // Display the normalized word in the message, or you could have a display mapping if needed
+      setMessage(`All words found! +${totalAllWordsBonus} bonus credits`);
+      setTimeout(() => {
+        endGame(); 
+      }, 1500);
     } else {
-      setMessage('Not in list!');
+      // Display the normalized word, or a prettier version if you map it back
+      setMessage(`"${capitalizeFirstLetter(normalizedInput)}" found! +${earnedForThisWord} credits`);
       setTimeout(() => setMessage(''), 2000);
     }
-    setInputValue('');
-  };
+  } else {
+    setMessage('Not in list or doesn\'t fit criteria!');
+    setTimeout(() => setMessage(''), 2000);
+  }
+  setInputValue(''); // Clear input after every attempt
+};
 
   const useHint = () => {
     playButtonSound();
@@ -1664,12 +1838,14 @@ const TopicLingo = () => {
   const renderSettings = () => (
     <div className="flex flex-col items-center gap-4 w-full max-w-md">
       <h1 className="text-3xl font-bold text-indigo-600 mb-4">Settings</h1>
+      
       {/* Music Toggle */}
+      {/* ... (Music toggle JSX remains the same) ... */}
       <div className="w-full flex items-center justify-between mb-4 p-3 bg-gray-100 rounded-lg">
         <label className="font-bold text-gray-700">Enable Music</label>
-        <div
+        <div 
           onClick={() => {
-            playButtonSound();
+            playButtonSound(); 
             setMusicEnabled(!musicEnabled);
           }}
           className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer ${
@@ -1679,12 +1855,14 @@ const TopicLingo = () => {
           <div className="bg-white w-4 h-4 rounded-full shadow-md"></div>
         </div>
       </div>
+      
       {/* Sound Effects Toggle */}
+      {/* ... (Sound Effects toggle JSX remains the same) ... */}
       <div className="w-full flex items-center justify-between mb-4 p-3 bg-gray-100 rounded-lg">
         <label className="font-bold text-gray-700">Enable Sound Effects</label>
-        <div
+        <div 
           onClick={() => {
-            if (soundEnabled) playButtonSound(); // Play sound only if turning on or already on
+            if (soundEnabled) playButtonSound(); 
             setSoundEnabled(!soundEnabled);
           }}
           className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer ${
@@ -1694,22 +1872,26 @@ const TopicLingo = () => {
           <div className="bg-white w-4 h-4 rounded-full shadow-md"></div>
         </div>
       </div>
+      
       {/* Animations Toggle */}
-      <div className="w-full flex items-center justify-between mb-4 p-3 bg-gray-100 rounded-lg">
+      {/* ... (Animations toggle JSX remains the same) ... */}
+       <div className="w-full flex items-center justify-between mb-4 p-3 bg-gray-100 rounded-lg">
         <label className="font-bold text-gray-700">Enable Animations</label>
-        <div
+        <div 
           onClick={() => {
             playButtonSound();
             setAnimationsEnabled(!animationsEnabled);
           }}
-          className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer ${ // Visual toggle for animations
+          className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer ${
             animationsEnabled ? 'bg-green-500 justify-end' : 'bg-gray-300 justify-start'
           }`}
         >
           <div className="bg-white w-4 h-4 rounded-full shadow-md"></div>
         </div>
       </div>
+      
       {/* Language Selection */}
+      {/* ... (Language selection JSX remains the same) ... */}
       <div className="w-full mb-6">
         <label className="font-bold text-gray-700 block mb-2">Language (Display Only)</label>
         <select
@@ -1724,19 +1906,39 @@ const TopicLingo = () => {
           {/* Add other language options here if UI text is translated */}
         </select>
       </div>
+
+      {/* About the Game Section - UPDATED */}
+      <div className="w-full mt-6 p-4 bg-gray-100 rounded-lg">
+        <h3 className="font-bold text-gray-700 mb-2">About TopicLingo</h3>
+        <div className="text-sm text-gray-600 space-y-2"> {/* Adjusted space-y for paragraph spacing */}
+          <p>
+            TopicLingo is a fun word-finding challenge! Each round, you'll choose a topic and be given two key letters.
+          </p>
+          <p>
+            Your goal is to discover words related to that topic that contain both of the provided letters. Each topic features a curated list of many common and relevant words to test your vocabulary.
+          </p>
+          {/* +++ ADDED DISCLAIMER PARAGRAPH +++ */}
+          <p className="italic text-xs pt-1">
+            Please note: While our lists aim to be comprehensive, they may not include every possible word for a topic. We're always working to expand and refine our word lists with future updates and player feedback!
+          </p>
+        </div>
+      </div>
+      
       {/* Credits Section */}
+      {/* ... (Credits Section JSX remains the same) ... */}
       <div className="w-full mt-8 p-4 bg-gray-100 rounded-lg">
         <h3 className="font-bold text-gray-700 mb-2">Game Credits</h3>
         <div className="text-sm text-gray-600">
-          <p className="mb-2">Design & Development: You!</p>
+          <p className="mb-2">Design & Development: Credeur Studios</p>
           <p className="mb-2">Sound Effects: mixkit.co, zapsplat.com</p>
           <p className="mb-2">Music: Respective Artists</p>
-          <p>© 2024 TopicLingo</p>
+          <p>© 2025 TopicLingo</p>
         </div>
       </div>
-      <button
+      
+      <button 
         onClick={() => { playButtonSound(); setGameState('menu'); }}
-        className="px-4 py-2 bg-gray-600 text-white rounded-lg font-bold hover:bg-gray-700 mt-4"
+        className="px-4 py-2 bg-gray-600 text-white rounded-lg font-bold hover:bg-gray-700 mt-6"
       >
         Back to Menu
       </button>
@@ -1884,17 +2086,29 @@ const TopicLingo = () => {
             <div className="text-2xl font-bold text-amber-500">{lastRoundEarned}</div> {/* Display lastRoundEarned */}
           </div>
         </div>
+        {/* Player statistics - UPDATED SECTION */}
         <div className="w-full bg-indigo-50 p-4 rounded-lg mb-6">
-          <h3 className="font-bold mb-2 text-indigo-700">Player Statistics ({playerName})</h3>
+          {/* UPDATED Title */}
+          <h3 className="font-bold mb-2 text-indigo-700">Player Lifetime Statistics ({playerName})</h3>
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>Total Games Played:</div><div className="text-right font-bold">{gamesPlayed}</div>
-            <div>Total Words Ever Found:</div><div className="text-right font-bold">{totalWordsFound}</div>
-            <div>High Score (Words/Round):</div><div className="text-right font-bold">{highScore}</div>
-            <div>Hints Used (Lifetime):</div><div className="text-right font-bold">{hintsUsedTotal}</div>
-            <div>Time Boosts Used (Lifetime):</div><div className="text-right font-bold">{timeUsedTotal}</div>
-            <div>2× Boosters Used (Lifetime):</div><div className="text-right font-bold">{boostersUsedTotal}</div>
+            {/* UPDATED Label */}
+            <div>Games Played:</div><div className="text-right font-bold">{gamesPlayed}</div>
+            
+            <div>Total Words Found:</div><div className="text-right font-bold">{totalWordsFound}</div>
+            
+            {/* UPDATED Label (highScore variable still holds this value) */}
+            <div>Most Words Found During A Round:</div><div className="text-right font-bold">{highScore}</div>
+
+            {/* UPDATED Label */}
+            <div>Hints Used:</div><div className="text-right font-bold">{hintsUsedTotal}</div>
+
+            <div>Time Boosts Used:</div><div className="text-right font-bold">{timeUsedTotal}</div>
+
+            {/* UPDATED Label */}
+            <div>2x Boosters Used:</div><div className="text-right font-bold">{boostersUsedTotal}</div>
           </div>
         </div>
+        
         {missedWords.length > 0 && (
           <div className="w-full mb-6">
             <div className="flex justify-between mb-2 items-center">

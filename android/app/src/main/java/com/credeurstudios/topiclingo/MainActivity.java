@@ -1,4 +1,4 @@
-package com.example.topiclingo;
+package com.credeurstudios.topiclingo;
 
 import com.getcapacitor.BridgeActivity;
 
