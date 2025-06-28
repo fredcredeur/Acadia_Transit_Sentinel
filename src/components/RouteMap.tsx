@@ -1,5 +1,5 @@
-import React from 'react';
-import { Navigation, MapPin, AlertCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Navigation, MapPin, AlertCircle, ZoomIn } from 'lucide-react';
 import { Route, Vehicle } from '../types';
 import { RiskCalculator } from '../utils/riskCalculator';
 import { GoogleMapComponent } from './GoogleMapComponent';
@@ -15,12 +15,29 @@ export const RouteMap: React.FC<RouteMapProps> = ({
   vehicle, 
   useGoogleMaps = true 
 }) => {
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
+  
   const segmentsWithRisk = route.segments.map(segment => ({
     ...segment,
     adjustedRisk: RiskCalculator.calculateSegmentRisk(segment, vehicle)
   }));
 
   const overallRisk = RiskCalculator.calculateRouteRisk(route, vehicle);
+
+  const handleSegmentClick = (segmentId: string) => {
+    console.log('Segment clicked from list:', segmentId);
+    setSelectedSegmentId(segmentId);
+    
+    // If Google Maps is available, trigger zoom
+    if (useGoogleMaps && (window as any).zoomToSegment) {
+      (window as any).zoomToSegment(segmentId);
+    }
+  };
+
+  const handleMapSegmentClick = (segmentId: string) => {
+    console.log('Segment clicked from map:', segmentId);
+    setSelectedSegmentId(segmentId);
+  };
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border border-gray-100 dark:border-gray-700 transition-colors duration-300">
@@ -53,6 +70,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
             route={route} 
             vehicle={vehicle}
             className="h-full"
+            onSegmentClick={handleMapSegmentClick}
           />
         ) : (
           // Fallback to mock visualization
@@ -102,13 +120,16 @@ export const RouteMap: React.FC<RouteMapProps> = ({
                         cy={y}
                         r="8"
                         fill={RiskCalculator.getRiskColor(segment.adjustedRisk)}
-                        className="drop-shadow-sm"
+                        className="drop-shadow-sm cursor-pointer hover:r-10 transition-all"
+                        onClick={() => handleSegmentClick(segment.id)}
                       />
                       <circle
                         cx={x}
                         cy={y}
                         r="4"
                         fill="white"
+                        className="cursor-pointer"
+                        onClick={() => handleSegmentClick(segment.id)}
                       />
                     </g>
                   );
@@ -119,14 +140,15 @@ export const RouteMap: React.FC<RouteMapProps> = ({
               {route.criticalPoints.map((point, index) => (
                 <div
                   key={point.segmentId}
-                  className="absolute transform -translate-x-1/2 -translate-y-1/2"
+                  className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
                   style={{
                     left: `${20 + (point.position * 17)}%`,
                     top: `${70 - (point.position * 8)}%`
                   }}
+                  onClick={() => handleSegmentClick(point.segmentId)}
                 >
                   <div className="relative">
-                    <AlertCircle className="w-6 h-6 text-red-500 animate-pulse" />
+                    <AlertCircle className="w-6 h-6 text-red-500 animate-pulse hover:w-8 hover:h-8 transition-all" />
                     <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-red-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
                       Critical Point {point.position + 1}
                     </div>
@@ -152,6 +174,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
                   <span className="text-xs text-gray-600 dark:text-gray-400">High</span>
                 </div>
               </div>
+              <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Click segments to zoom</p>
+              </div>
             </div>
           </div>
         )}
@@ -159,24 +184,40 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
       {/* Route segments list */}
       <div className="p-4">
-        <h4 className="font-medium text-gray-900 dark:text-white mb-3">Route Segments</h4>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="font-medium text-gray-900 dark:text-white">Route Segments</h4>
+          <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+            <ZoomIn className="w-3 h-3" />
+            Click to zoom
+          </div>
+        </div>
         <div className="space-y-2">
           {segmentsWithRisk.map((segment, index) => (
             <div
               key={segment.id}
-              className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200"
+              className={`flex items-center justify-between p-3 rounded-lg transition-all duration-200 cursor-pointer ${
+                selectedSegmentId === segment.id
+                  ? 'bg-blue-100 dark:bg-blue-900/30 border-2 border-blue-300 dark:border-blue-600'
+                  : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 border-2 border-transparent'
+              }`}
+              onClick={() => handleSegmentClick(segment.id)}
             >
               <div className="flex items-center gap-3">
                 <div
-                  className="w-4 h-4 rounded-full"
+                  className="w-4 h-4 rounded-full flex-shrink-0"
                   style={{ backgroundColor: RiskCalculator.getRiskColor(segment.adjustedRisk) }}
                 />
-                <div>
-                  <div className="font-medium text-sm text-gray-900 dark:text-white">{segment.streetName}</div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">{segment.description}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm text-gray-900 dark:text-white flex items-center gap-2">
+                    {segment.streetName}
+                    {selectedSegmentId === segment.id && (
+                      <ZoomIn className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 truncate">{segment.description}</div>
                 </div>
               </div>
-              <div className="text-right">
+              <div className="text-right flex-shrink-0">
                 <div className="font-medium text-sm text-gray-900 dark:text-white">{Math.round(segment.adjustedRisk)}%</div>
                 <div className="text-xs text-gray-600 dark:text-gray-400">
                   {RiskCalculator.getRiskLabel(segment.adjustedRisk)}
@@ -184,6 +225,17 @@ export const RouteMap: React.FC<RouteMapProps> = ({
               </div>
             </div>
           ))}
+        </div>
+        
+        {/* Interaction hint */}
+        <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+          <div className="flex items-center gap-2 text-blue-800 dark:text-blue-300">
+            <ZoomIn className="w-4 h-4" />
+            <span className="text-sm font-medium">Interactive Map</span>
+          </div>
+          <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
+            Click on any segment above or on the map to zoom in and examine specific risk areas in detail.
+          </p>
         </div>
       </div>
     </div>
