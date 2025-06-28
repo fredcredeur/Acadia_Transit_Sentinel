@@ -8,6 +8,7 @@ export interface GoogleMapsConfig {
 export interface RouteRequest {
   origin: string;
   destination: string;
+  waypoints?: string[];
   travelMode: google.maps.TravelMode;
   avoidHighways?: boolean;
   avoidTolls?: boolean;
@@ -157,8 +158,11 @@ export class GoogleMapsService {
 
     try {
       console.log('Getting routes from', request.origin, 'to', request.destination);
+      if (request.waypoints && request.waypoints.length > 0) {
+        console.log('With waypoints:', request.waypoints);
+      }
       
-      // First, try to geocode both addresses to establish a regional preference
+      // First, try to geocode the origin to establish a regional preference
       let preferredRegion: { lat: number; lng: number; radius: number } | undefined;
       
       try {
@@ -177,7 +181,7 @@ export class GoogleMapsService {
         console.warn('Could not establish regional preference:', error);
       }
 
-      // Validate and clean both addresses with regional preference
+      // Validate and clean origin and destination
       const [originResult, destinationResult] = await Promise.all([
         this.validateAndCleanAddress(request.origin, preferredRegion),
         this.validateAndCleanAddress(request.destination, preferredRegion)
@@ -185,7 +189,17 @@ export class GoogleMapsService {
 
       console.log('Cleaned addresses:', originResult.address, '→', destinationResult.address);
 
-      // Check if both addresses have coordinates and calculate distance
+      // Validate and clean waypoints if provided
+      let waypointResults: { address: string; coordinates?: { lat: number; lng: number } }[] = [];
+      if (request.waypoints && request.waypoints.length > 0) {
+        console.log('Validating waypoints...');
+        waypointResults = await Promise.all(
+          request.waypoints.map(waypoint => this.validateAndCleanAddress(waypoint, preferredRegion))
+        );
+        console.log('Cleaned waypoints:', waypointResults.map(w => w.address));
+      }
+
+      // Check if addresses have coordinates and calculate total distance
       if (originResult.coordinates && destinationResult.coordinates) {
         const distance = this.calculateDistanceInMiles(
           originResult.coordinates.lat,
@@ -194,13 +208,24 @@ export class GoogleMapsService {
           destinationResult.coordinates.lng
         );
         
-        console.log('Distance between addresses:', distance, 'miles');
+        console.log('Distance between origin and destination:', distance, 'miles');
         
         // If distance is very large (>200 miles), warn the user
         if (distance > 200) {
           console.warn('Large distance detected, addresses may be in different regions');
           throw new Error(`The distance between these addresses is ${Math.round(distance)} miles. Please verify:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"\n\nIf this seems incorrect, try adding city and state to both addresses.`);
         }
+      }
+
+      // Prepare waypoints for Google Maps API
+      let googleWaypoints: google.maps.DirectionsWaypoint[] = [];
+      if (waypointResults.length > 0) {
+        googleWaypoints = waypointResults.map(waypoint => ({
+          location: waypoint.coordinates 
+            ? new google.maps.LatLng(waypoint.coordinates.lat, waypoint.coordinates.lng)
+            : waypoint.address,
+          stopover: true
+        }));
       }
 
       // Use coordinates if available, otherwise use the cleaned address
@@ -216,12 +241,13 @@ export class GoogleMapsService {
         const directionsRequest: google.maps.DirectionsRequest = {
           origin: originForDirections,
           destination: destinationForDirections,
+          waypoints: googleWaypoints.length > 0 ? googleWaypoints : undefined,
           travelMode: request.travelMode,
           avoidHighways: request.avoidHighways || false,
           avoidTolls: request.avoidTolls || false,
-          provideRouteAlternatives: true,
+          provideRouteAlternatives: googleWaypoints.length === 0, // Only provide alternatives if no waypoints
           unitSystem: google.maps.UnitSystem.IMPERIAL,
-          optimizeWaypoints: false,
+          optimizeWaypoints: false, // Keep waypoints in order
           region: 'US' // Bias results to US
         };
 
@@ -235,10 +261,16 @@ export class GoogleMapsService {
             
             // Log route details for debugging
             result.routes.forEach((route, index) => {
-              const leg = route.legs[0];
-              const distance = leg.distance?.text || 'Unknown';
-              const duration = leg.duration?.text || 'Unknown';
-              console.log(`Route ${index + 1}: ${distance}, ${duration}`);
+              const totalDistance = route.legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
+              const totalDuration = route.legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
+              const distanceText = (totalDistance / 1609.34).toFixed(1) + ' miles';
+              const durationText = Math.round(totalDuration / 60) + ' min';
+              console.log(`Route ${index + 1}: ${distanceText}, ${durationText}`);
+              
+              // Log waypoint info if present
+              if (route.legs.length > 1) {
+                console.log(`  - ${route.legs.length} legs (${route.legs.length - 1} waypoints)`);
+              }
             });
             
             resolve({ routes: result.routes, status });
@@ -250,10 +282,18 @@ export class GoogleMapsService {
             
             switch (status) {
               case google.maps.DirectionsStatus.NOT_FOUND:
-                errorMessage = `Address not found. Please check:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"\n\nTry using more specific addresses with city and state.`;
+                errorMessage = `Address not found. Please check:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"`;
+                if (request.waypoints && request.waypoints.length > 0) {
+                  errorMessage += `\n• Waypoints: ${request.waypoints.join(', ')}`;
+                }
+                errorMessage += '\n\nTry using more specific addresses with city and state.';
                 break;
               case google.maps.DirectionsStatus.ZERO_RESULTS:
-                errorMessage = `No route found between the specified locations:\n• From: "${request.origin}"\n• To: "${request.destination}"\n\nTry different addresses or check if the locations are accessible by road.`;
+                errorMessage = `No route found between the specified locations:\n• From: "${request.origin}"\n• To: "${request.destination}"`;
+                if (request.waypoints && request.waypoints.length > 0) {
+                  errorMessage += `\n• Via: ${request.waypoints.join(', ')}`;
+                }
+                errorMessage += '\n\nTry different addresses or check if all locations are accessible by road.';
                 break;
               case google.maps.DirectionsStatus.OVER_QUERY_LIMIT:
                 errorMessage = 'Too many requests. Please wait a moment and try again.';
@@ -263,6 +303,9 @@ export class GoogleMapsService {
                 break;
               case google.maps.DirectionsStatus.INVALID_REQUEST:
                 errorMessage = `Invalid request. Please check your addresses:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"`;
+                if (request.waypoints && request.waypoints.length > 0) {
+                  errorMessage += `\n• Waypoints: ${request.waypoints.join(', ')}`;
+                }
                 break;
               default:
                 errorMessage = `Directions request failed with status: ${status}`;

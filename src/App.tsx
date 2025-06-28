@@ -6,7 +6,7 @@ import { RouteComparison } from './components/RouteComparison';
 import { CriticalPoints } from './components/CriticalPoints';
 import { RouteInput } from './components/RouteInput';
 import { DarkModeToggle } from './components/DarkModeToggle';
-import { Vehicle, Route } from './types';
+import { Vehicle, Route, StopLocation } from './types';
 import { mockRoutes } from './data/mockRoutes';
 import { RouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
@@ -27,9 +27,10 @@ function App() {
   const [useRealData, setUseRealData] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Store the last analyzed addresses
+  // Store the last analyzed addresses and stops
   const [lastAnalyzedOrigin, setLastAnalyzedOrigin] = useState('');
   const [lastAnalyzedDestination, setLastAnalyzedDestination] = useState('');
+  const [lastAnalyzedStops, setLastAnalyzedStops] = useState<StopLocation[]>([]);
 
   const selectedRoute = routes.find(route => route.id === selectedRouteId) || routes[0];
 
@@ -43,7 +44,7 @@ function App() {
     }
   }, []);
 
-  const handleRouteAnalysis = async (origin: string, destination: string) => {
+  const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[]) => {
     if (!useRealData) {
       setError('Google Maps integration requires API key configuration.');
       return;
@@ -58,6 +59,7 @@ function App() {
         origin,
         destination,
         vehicle,
+        stops,
         avoidHighways: false,
         avoidTolls: false
       });
@@ -66,15 +68,26 @@ function App() {
       setSelectedRouteId(result.recommendedRouteId);
       setCurrentView('details'); // Switch to details view to show the route
       
-      // Store the successfully analyzed addresses
+      // Store the successfully analyzed addresses and stops
       setLastAnalyzedOrigin(origin);
       setLastAnalyzedDestination(destination);
+      setLastAnalyzedStops(stops || []);
     } catch (err) {
       console.error('Route analysis failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to analyze routes. Please try again.');
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const getRouteDisplayText = () => {
+    if (!lastAnalyzedOrigin || !lastAnalyzedDestination) return '';
+    
+    let text = `${lastAnalyzedOrigin} → ${lastAnalyzedDestination}`;
+    if (lastAnalyzedStops.length > 0) {
+      text += ` (${lastAnalyzedStops.length} stop${lastAnalyzedStops.length > 1 ? 's' : ''})`;
+    }
+    return text;
   };
 
   return (
@@ -142,7 +155,7 @@ function App() {
             <div className="flex items-center gap-2">
               <Shield className="w-5 h-5 text-green-600 dark:text-green-400" />
               <span className="text-green-800 dark:text-green-300">
-                Route analysis completed for: <strong>{lastAnalyzedOrigin}</strong> → <strong>{lastAnalyzedDestination}</strong>
+                Route analysis completed for: <strong>{getRouteDisplayText()}</strong>
               </span>
             </div>
           </div>
@@ -239,8 +252,8 @@ function App() {
                 <Shield className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">Safety First</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Comprehensive analysis of pedestrian traffic, road conditions, and restrictions</p>
+                <h3 className="font-semibold text-gray-900 dark:text-white">Multi-Stop Routes</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Plan complex routes with multiple stops and comprehensive risk analysis</p>
               </div>
             </div>
           </div>

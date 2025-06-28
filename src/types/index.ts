@@ -30,6 +30,7 @@ export interface Route {
   estimatedTime: number;
   overallRisk: number;
   criticalPoints: CriticalPoint[];
+  waypoints?: string[]; // Added waypoints support
 }
 
 export interface CriticalPoint {
@@ -56,4 +57,12 @@ export interface LocationSuggestion {
   name: string;
   address: string;
   category?: string;
+}
+
+export interface StopLocation {
+  id: string;
+  address: string;
+  name?: string;
+  order: number;
+  estimatedStopTime?: number; // minutes
 }

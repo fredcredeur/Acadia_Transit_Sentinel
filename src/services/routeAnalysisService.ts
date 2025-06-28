@@ -1,11 +1,12 @@
 import { GoogleMapsService, RoadData } from './googleMapsService';
-import { Route, RouteSegment, CriticalPoint, Vehicle } from '../types';
+import { Route, RouteSegment, CriticalPoint, Vehicle, StopLocation } from '../types';
 import { RiskCalculator } from '../utils/riskCalculator';
 
 export interface RouteAnalysisRequest {
   origin: string;
   destination: string;
   vehicle: Vehicle;
+  stops?: StopLocation[];
   avoidHighways?: boolean;
   avoidTolls?: boolean;
 }
@@ -24,13 +25,16 @@ export class RouteAnalysisService {
 
   public async analyzeRoutes(request: RouteAnalysisRequest): Promise<RouteAnalysisResult> {
     console.log('Starting route analysis for:', request.origin, '→', request.destination);
+    if (request.stops && request.stops.length > 0) {
+      console.log('With stops:', request.stops.map(s => s.address));
+    }
     
     try {
       // Ensure Google Maps is initialized
       await this.googleMapsService.initialize();
       console.log('Google Maps service initialized');
 
-      // Test geocoding for both addresses first with better error handling
+      // Test geocoding for origin and destination first
       let originValid = false;
       let destinationValid = false;
       let originResults: google.maps.GeocoderResult[] = [];
@@ -68,7 +72,24 @@ export class RouteAnalysisService {
         throw new Error('One or both addresses could not be found. Please check your addresses and try again.');
       }
 
-      // Check if addresses are in reasonable proximity (within Louisiana and surrounding states)
+      // Validate stop locations if provided
+      if (request.stops && request.stops.length > 0) {
+        console.log('Validating stop locations...');
+        for (const stop of request.stops) {
+          try {
+            const stopResults = await this.googleMapsService.geocodeAddress(stop.address);
+            if (stopResults.length === 0) {
+              throw new Error(`Stop location not found: "${stop.address}"`);
+            }
+            console.log('Stop validated:', stopResults[0].formatted_address);
+          } catch (error) {
+            console.error('Stop geocoding failed:', error);
+            throw new Error(`Stop location not found: "${stop.address}"\n\nPlease check the address and try again.`);
+          }
+        }
+      }
+
+      // Check if addresses are in reasonable proximity
       if (originResults.length > 0 && destinationResults.length > 0) {
         const originLoc = originResults[0].geometry.location;
         const destLoc = destinationResults[0].geometry.location;
@@ -87,12 +108,16 @@ export class RouteAnalysisService {
         }
       }
 
-      console.log('Both addresses validated, requesting directions...');
+      console.log('All addresses validated, requesting directions...');
+
+      // Prepare waypoints from stops
+      const waypoints = request.stops?.map(stop => stop.address) || [];
 
       // Get routes from Google Maps with enhanced error handling
       const routeResponse = await this.googleMapsService.getRoutes({
         origin: request.origin,
         destination: request.destination,
+        waypoints: waypoints.length > 0 ? waypoints : undefined,
         travelMode: google.maps.TravelMode.DRIVING,
         avoidHighways: request.avoidHighways,
         avoidTolls: request.avoidTolls
@@ -101,13 +126,18 @@ export class RouteAnalysisService {
       console.log('Google Maps returned', routeResponse.routes.length, 'routes');
 
       if (!routeResponse.routes || routeResponse.routes.length === 0) {
-        throw new Error(`No routes found between:\n• From: "${request.origin}"\n• To: "${request.destination}"\n\nPlease verify both locations are accessible by road.`);
+        let errorMessage = `No routes found between:\n• From: "${request.origin}"\n• To: "${request.destination}"`;
+        if (waypoints.length > 0) {
+          errorMessage += `\n• Via: ${waypoints.join(', ')}`;
+        }
+        errorMessage += '\n\nPlease verify all locations are accessible by road.';
+        throw new Error(errorMessage);
       }
 
       // Convert Google Maps routes to our Route format
       const routes = await Promise.all(
         routeResponse.routes.map((googleRoute, index) =>
-          this.convertGoogleRouteToRoute(googleRoute, index, request.vehicle)
+          this.convertGoogleRouteToRoute(googleRoute, index, request.vehicle, request.stops)
         )
       );
 
@@ -131,7 +161,7 @@ export class RouteAnalysisService {
         if (error.message.includes('NOT_FOUND')) {
           throw new Error(`Address not found. Please check your addresses:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"\n\nTip: Include city and state for better results.`);
         } else if (error.message.includes('ZERO_RESULTS')) {
-          throw new Error(`No route found between these locations:\n• From: "${request.origin}"\n• To: "${request.destination}"\n\nPlease verify both locations are accessible by road.`);
+          throw new Error(`No route found between these locations:\n• From: "${request.origin}"\n• To: "${request.destination}"\n\nPlease verify all locations are accessible by road.`);
         } else if (error.message.includes('OVER_QUERY_LIMIT')) {
           throw new Error('Google Maps API limit reached. Please wait a moment and try again.');
         } else if (error.message.includes('REQUEST_DENIED')) {
@@ -163,25 +193,32 @@ export class RouteAnalysisService {
   private async convertGoogleRouteToRoute(
     googleRoute: google.maps.DirectionsRoute,
     index: number,
-    vehicle: Vehicle
+    vehicle: Vehicle,
+    stops?: StopLocation[]
   ): Promise<Route> {
     const routeId = `route-${index + 1}`;
-    const routeName = this.generateRouteName(googleRoute, index);
+    const routeName = this.generateRouteName(googleRoute, index, stops);
     
     console.log(`Converting route ${index + 1}: ${routeName}`);
     
-    // Extract basic route info
-    const leg = googleRoute.legs[0];
-    const totalDistance = this.metersToMiles(leg.distance?.value || 0);
-    const estimatedTime = Math.round((leg.duration?.value || 0) / 60);
+    // Extract basic route info - sum all legs for total distance and time
+    const totalDistance = googleRoute.legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
+    const totalDuration = googleRoute.legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
+    
+    const totalDistanceMiles = this.metersToMiles(totalDistance);
+    const estimatedTimeMinutes = Math.round(totalDuration / 60);
 
-    console.log(`Route ${index + 1} - Distance: ${totalDistance}mi, Time: ${estimatedTime}min`);
-    console.log(`Route ${index + 1} - Start: ${leg.start_address}`);
-    console.log(`Route ${index + 1} - End: ${leg.end_address}`);
+    // Add stop time if stops are provided
+    const stopTime = stops ? stops.reduce((sum, stop) => sum + (stop.estimatedStopTime || 0), 0) : 0;
+    const totalTimeWithStops = estimatedTimeMinutes + stopTime;
 
-    // Create segments from route steps with enhanced analysis
-    const segments = await this.createSegmentsFromSteps(
-      googleRoute.legs[0].steps,
+    console.log(`Route ${index + 1} - Distance: ${totalDistanceMiles}mi, Time: ${estimatedTimeMinutes}min (${totalTimeWithStops}min with stops)`);
+    console.log(`Route ${index + 1} - Start: ${googleRoute.legs[0].start_address}`);
+    console.log(`Route ${index + 1} - End: ${googleRoute.legs[googleRoute.legs.length - 1].end_address}`);
+
+    // Create segments from all route legs
+    const segments = await this.createSegmentsFromLegs(
+      googleRoute.legs,
       routeId,
       vehicle
     );
@@ -193,33 +230,47 @@ export class RouteAnalysisService {
 
     console.log(`Identified ${criticalPoints.length} critical points for route ${index + 1}`);
 
+    // Prepare waypoints list for the route
+    const waypoints = stops?.map(stop => stop.address) || [];
+
     return {
       id: routeId,
       name: routeName,
       segments,
-      totalDistance,
-      estimatedTime,
+      totalDistance: totalDistanceMiles,
+      estimatedTime: totalTimeWithStops, // Include stop time in total
       overallRisk: 0, // Will be calculated by RiskCalculator
-      criticalPoints
+      criticalPoints,
+      waypoints: waypoints.length > 0 ? waypoints : undefined
     };
   }
 
-  private generateRouteName(googleRoute: google.maps.DirectionsRoute, index: number): string {
+  private generateRouteName(googleRoute: google.maps.DirectionsRoute, index: number, stops?: StopLocation[]): string {
     const summary = googleRoute.summary;
+    
+    // If there are stops, include that in the name
+    if (stops && stops.length > 0) {
+      const stopCount = stops.length;
+      const baseName = summary && summary.trim() ? summary : `Route ${index + 1}`;
+      return `${baseName} (${stopCount} stop${stopCount > 1 ? 's' : ''})`;
+    }
+    
     if (summary && summary.trim()) {
       return summary;
     }
     
     // Try to extract main roads from the route
-    const leg = googleRoute.legs[0];
-    if (leg && leg.steps && leg.steps.length > 0) {
-      const mainRoads = leg.steps
-        .map(step => this.extractStreetName(step.instructions))
-        .filter(name => name && !name.includes('Unknown'))
-        .slice(0, 2);
-      
-      if (mainRoads.length > 0) {
-        return `via ${mainRoads.join(' & ')}`;
+    if (googleRoute.legs && googleRoute.legs.length > 0) {
+      const allSteps = googleRoute.legs.flatMap(leg => leg.steps || []);
+      if (allSteps.length > 0) {
+        const mainRoads = allSteps
+          .map(step => this.extractStreetName(step.instructions))
+          .filter(name => name && !name.includes('Unknown'))
+          .slice(0, 2);
+        
+        if (mainRoads.length > 0) {
+          return `via ${mainRoads.join(' & ')}`;
+        }
       }
     }
     
@@ -235,48 +286,55 @@ export class RouteAnalysisService {
     return names[index] || `Route ${index + 1}`;
   }
 
-  private async createSegmentsFromSteps(
-    steps: google.maps.DirectionsStep[],
+  private async createSegmentsFromLegs(
+    legs: google.maps.DirectionsLeg[],
     routeId: string,
     vehicle: Vehicle
   ): Promise<RouteSegment[]> {
     const segments: RouteSegment[] = [];
+    let segmentCounter = 0;
 
-    console.log(`Processing ${steps.length} steps for route segments`);
+    console.log(`Processing ${legs.length} legs for route segments`);
 
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
-      const startLocation = step.start_location;
-      const endLocation = step.end_location;
+    for (const leg of legs) {
+      const steps = leg.steps || [];
+      console.log(`Processing ${steps.length} steps in leg`);
 
-      // Get road data for this segment
-      const roadData = await this.googleMapsService.getRoadData(
-        startLocation.lat(),
-        startLocation.lng()
-      );
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const startLocation = step.start_location;
+        const endLocation = step.end_location;
 
-      // Extract street name from instructions
-      const streetName = this.extractStreetName(step.instructions);
-      
-      // Enhanced risk factor calculation
-      const riskFactors = this.calculateEnhancedRiskFactors(step, roadData, vehicle);
-      
-      const segment: RouteSegment = {
-        id: `${routeId}-seg-${i + 1}`,
-        startLat: startLocation.lat(),
-        startLng: startLocation.lng(),
-        endLat: endLocation.lat(),
-        endLng: endLocation.lng(),
-        streetName,
-        riskScore: 0, // Will be calculated by RiskCalculator
-        riskFactors,
-        description: this.generateEnhancedSegmentDescription(step, roadData, riskFactors, vehicle)
-      };
+        // Get road data for this segment
+        const roadData = await this.googleMapsService.getRoadData(
+          startLocation.lat(),
+          startLocation.lng()
+        );
 
-      segments.push(segment);
+        // Extract street name from instructions
+        const streetName = this.extractStreetName(step.instructions);
+        
+        // Enhanced risk factor calculation
+        const riskFactors = this.calculateEnhancedRiskFactors(step, roadData, vehicle);
+        
+        const segment: RouteSegment = {
+          id: `${routeId}-seg-${segmentCounter + 1}`,
+          startLat: startLocation.lat(),
+          startLng: startLocation.lng(),
+          endLat: endLocation.lat(),
+          endLng: endLocation.lng(),
+          streetName,
+          riskScore: 0, // Will be calculated by RiskCalculator
+          riskFactors,
+          description: this.generateEnhancedSegmentDescription(step, roadData, riskFactors, vehicle)
+        };
+
+        segments.push(segment);
+        segmentCounter++;
+      }
     }
 
-    console.log(`Created ${segments.length} segments`);
+    console.log(`Created ${segments.length} total segments`);
     return segments;
   }
 
