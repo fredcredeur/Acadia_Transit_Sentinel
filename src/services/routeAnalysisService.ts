@@ -33,20 +33,32 @@ export class RouteAnalysisService {
       // Test geocoding for both addresses first with better error handling
       let originValid = false;
       let destinationValid = false;
+      let originResults: google.maps.GeocoderResult[] = [];
+      let destinationResults: google.maps.GeocoderResult[] = [];
       
       try {
-        const originResults = await this.googleMapsService.geocodeAddress(request.origin);
+        originResults = await this.googleMapsService.geocodeAddress(request.origin);
         console.log('Origin geocoding results:', originResults.length, 'results found');
         originValid = originResults.length > 0;
+        
+        if (originResults.length > 0) {
+          const location = originResults[0].geometry.location;
+          console.log('Origin location:', originResults[0].formatted_address, `(${location.lat()}, ${location.lng()})`);
+        }
       } catch (error) {
         console.error('Origin geocoding failed:', error);
         throw new Error(`Origin address not found: "${request.origin}"\n\nPlease try:\n• Adding city and state (e.g., "123 Main St, Lafayette, LA")\n• Using a more specific address\n• Checking for typos`);
       }
 
       try {
-        const destinationResults = await this.googleMapsService.geocodeAddress(request.destination);
+        destinationResults = await this.googleMapsService.geocodeAddress(request.destination);
         console.log('Destination geocoding results:', destinationResults.length, 'results found');
         destinationValid = destinationResults.length > 0;
+        
+        if (destinationResults.length > 0) {
+          const location = destinationResults[0].geometry.location;
+          console.log('Destination location:', destinationResults[0].formatted_address, `(${location.lat()}, ${location.lng()})`);
+        }
       } catch (error) {
         console.error('Destination geocoding failed:', error);
         throw new Error(`Destination address not found: "${request.destination}"\n\nPlease try:\n• Adding city and state (e.g., "456 Oak Ave, Opelousas, LA")\n• Using a more specific address\n• Checking for typos`);
@@ -54,6 +66,25 @@ export class RouteAnalysisService {
 
       if (!originValid || !destinationValid) {
         throw new Error('One or both addresses could not be found. Please check your addresses and try again.');
+      }
+
+      // Check if addresses are in reasonable proximity (within Louisiana and surrounding states)
+      if (originResults.length > 0 && destinationResults.length > 0) {
+        const originLoc = originResults[0].geometry.location;
+        const destLoc = destinationResults[0].geometry.location;
+        
+        // Calculate distance between the two points
+        const distance = this.calculateDistance(
+          originLoc.lat(), originLoc.lng(),
+          destLoc.lat(), destLoc.lng()
+        );
+        
+        console.log('Distance between addresses:', distance, 'miles');
+        
+        // If distance is very large, warn the user
+        if (distance > 300) {
+          throw new Error(`The addresses appear to be ${Math.round(distance)} miles apart. Please verify:\n• Origin: "${originResults[0].formatted_address}"\n• Destination: "${destinationResults[0].formatted_address}"\n\nIf this is correct, the route analysis will proceed. If not, please check your addresses.`);
+        }
       }
 
       console.log('Both addresses validated, requesting directions...');
@@ -117,6 +148,18 @@ export class RouteAnalysisService {
     }
   }
 
+  private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 3959; // Earth's radius in miles
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+
   private async convertGoogleRouteToRoute(
     googleRoute: google.maps.DirectionsRoute,
     index: number,
@@ -133,6 +176,8 @@ export class RouteAnalysisService {
     const estimatedTime = Math.round((leg.duration?.value || 0) / 60);
 
     console.log(`Route ${index + 1} - Distance: ${totalDistance}mi, Time: ${estimatedTime}min`);
+    console.log(`Route ${index + 1} - Start: ${leg.start_address}`);
+    console.log(`Route ${index + 1} - End: ${leg.end_address}`);
 
     // Create segments from route steps with enhanced analysis
     const segments = await this.createSegmentsFromSteps(

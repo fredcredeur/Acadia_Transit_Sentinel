@@ -82,7 +82,7 @@ export class GoogleMapsService {
     }
   }
 
-  private async validateAndCleanAddress(address: string): Promise<{ address: string; coordinates?: { lat: number; lng: number } }> {
+  private async validateAndCleanAddress(address: string, preferredRegion?: { lat: number; lng: number; radius: number }): Promise<{ address: string; coordinates?: { lat: number; lng: number } }> {
     if (!this.geocoder) {
       throw new Error('Geocoder not initialized');
     }
@@ -122,14 +122,15 @@ export class GoogleMapsService {
 
     try {
       console.log('Validating address via geocoding:', cleanAddress);
-      // Validate the address using geocoding
-      const results = await this.geocodeAddress(cleanAddress);
+      // Validate the address using geocoding with regional preference
+      const results = await this.geocodeAddress(cleanAddress, preferredRegion);
       
       if (results.length > 0) {
         const result = results[0];
         const location = result.geometry.location;
         
         console.log('Address validated:', result.formatted_address);
+        console.log('Coordinates:', location.lat(), location.lng());
         
         // Return the formatted address and coordinates
         return {
@@ -157,13 +158,50 @@ export class GoogleMapsService {
     try {
       console.log('Getting routes from', request.origin, 'to', request.destination);
       
-      // Validate and clean both addresses
+      // First, try to geocode both addresses to establish a regional preference
+      let preferredRegion: { lat: number; lng: number; radius: number } | undefined;
+      
+      try {
+        // Try to geocode the origin first to establish regional context
+        const originGeocode = await this.geocodeAddress(request.origin);
+        if (originGeocode.length > 0) {
+          const originLocation = originGeocode[0].geometry.location;
+          preferredRegion = {
+            lat: originLocation.lat(),
+            lng: originLocation.lng(),
+            radius: 50000 // 50km radius for local preference
+          };
+          console.log('Established regional preference around:', preferredRegion);
+        }
+      } catch (error) {
+        console.warn('Could not establish regional preference:', error);
+      }
+
+      // Validate and clean both addresses with regional preference
       const [originResult, destinationResult] = await Promise.all([
-        this.validateAndCleanAddress(request.origin),
-        this.validateAndCleanAddress(request.destination)
+        this.validateAndCleanAddress(request.origin, preferredRegion),
+        this.validateAndCleanAddress(request.destination, preferredRegion)
       ]);
 
       console.log('Cleaned addresses:', originResult.address, '→', destinationResult.address);
+
+      // Check if both addresses have coordinates and calculate distance
+      if (originResult.coordinates && destinationResult.coordinates) {
+        const distance = this.calculateDistanceInMiles(
+          originResult.coordinates.lat,
+          originResult.coordinates.lng,
+          destinationResult.coordinates.lat,
+          destinationResult.coordinates.lng
+        );
+        
+        console.log('Distance between addresses:', distance, 'miles');
+        
+        // If distance is very large (>200 miles), warn the user
+        if (distance > 200) {
+          console.warn('Large distance detected, addresses may be in different regions');
+          throw new Error(`The distance between these addresses is ${Math.round(distance)} miles. Please verify:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"\n\nIf this seems incorrect, try adding city and state to both addresses.`);
+        }
+      }
 
       // Use coordinates if available, otherwise use the cleaned address
       const originForDirections = originResult.coordinates 
@@ -194,6 +232,15 @@ export class GoogleMapsService {
           
           if (status === google.maps.DirectionsStatus.OK && result) {
             console.log('Directions successful, found', result.routes.length, 'routes');
+            
+            // Log route details for debugging
+            result.routes.forEach((route, index) => {
+              const leg = route.legs[0];
+              const distance = leg.distance?.text || 'Unknown';
+              const duration = leg.duration?.text || 'Unknown';
+              console.log(`Route ${index + 1}: ${distance}, ${duration}`);
+            });
+            
             resolve({ routes: result.routes, status });
           } else {
             console.error('Directions request failed with status:', status);
@@ -257,12 +304,24 @@ export class GoogleMapsService {
     return google.maps.geometry.spherical.computeDistanceBetween(point1, point2);
   }
 
-  public async geocodeAddress(address: string): Promise<google.maps.GeocoderResult[]> {
+  private calculateDistanceInMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 3959; // Earth's radius in miles
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+
+  public async geocodeAddress(address: string, preferredRegion?: { lat: number; lng: number; radius: number }): Promise<google.maps.GeocoderResult[]> {
     if (!this.geocoder) {
       throw new Error('Geocoder not initialized');
     }
     
-    console.log('Geocoding address:', address);
+    console.log('Geocoding address:', address, preferredRegion ? 'with regional preference' : '');
     
     return new Promise((resolve, reject) => {
       // Enhanced geocoding request with better regional bias
@@ -273,9 +332,38 @@ export class GoogleMapsService {
           country: 'US'
         }
       };
+
+      // Add regional bounds if provided
+      if (preferredRegion) {
+        const { lat, lng, radius } = preferredRegion;
+        const radiusInDegrees = radius / 111000; // Rough conversion from meters to degrees
+        
+        geocodeRequest.bounds = new google.maps.LatLngBounds(
+          new google.maps.LatLng(lat - radiusInDegrees, lng - radiusInDegrees),
+          new google.maps.LatLng(lat + radiusInDegrees, lng + radiusInDegrees)
+        );
+        
+        console.log('Using regional bounds for geocoding');
+      } else {
+        // Default to Louisiana/surrounding area bounds for better local results
+        geocodeRequest.bounds = new google.maps.LatLngBounds(
+          new google.maps.LatLng(28.0, -95.0), // Southwest Louisiana/Texas border
+          new google.maps.LatLng(33.5, -88.0)  // Northeast Louisiana/Mississippi border
+        );
+        
+        console.log('Using default Louisiana regional bounds');
+      }
       
       this.geocoder!.geocode(geocodeRequest, (results, status) => {
         console.log('Geocoding status:', status, 'Results:', results?.length || 0);
+        
+        if (results && results.length > 0) {
+          // Log the first few results for debugging
+          results.slice(0, 3).forEach((result, index) => {
+            const location = result.geometry.location;
+            console.log(`Result ${index + 1}:`, result.formatted_address, `(${location.lat()}, ${location.lng()})`);
+          });
+        }
         
         if (status === google.maps.GeocoderStatus.OK && results) {
           resolve(results);
