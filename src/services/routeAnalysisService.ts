@@ -23,24 +23,42 @@ export class RouteAnalysisService {
   }
 
   public async analyzeRoutes(request: RouteAnalysisRequest): Promise<RouteAnalysisResult> {
+    console.log('Starting route analysis for:', request.origin, '→', request.destination);
+    
     try {
       // Ensure Google Maps is initialized
       await this.googleMapsService.initialize();
+      console.log('Google Maps service initialized');
 
-      // Test geocoding for both addresses first
+      // Test geocoding for both addresses first with better error handling
+      let originValid = false;
+      let destinationValid = false;
+      
       try {
-        await this.googleMapsService.geocodeAddress(request.origin);
+        const originResults = await this.googleMapsService.geocodeAddress(request.origin);
+        console.log('Origin geocoding results:', originResults.length, 'results found');
+        originValid = originResults.length > 0;
       } catch (error) {
-        throw new Error(`Origin address not found: "${request.origin}". Please try a more specific address with city and state.`);
+        console.error('Origin geocoding failed:', error);
+        throw new Error(`Origin address not found: "${request.origin}"\n\nPlease try:\n• Adding city and state (e.g., "123 Main St, Lafayette, LA")\n• Using a more specific address\n• Checking for typos`);
       }
 
       try {
-        await this.googleMapsService.geocodeAddress(request.destination);
+        const destinationResults = await this.googleMapsService.geocodeAddress(request.destination);
+        console.log('Destination geocoding results:', destinationResults.length, 'results found');
+        destinationValid = destinationResults.length > 0;
       } catch (error) {
-        throw new Error(`Destination address not found: "${request.destination}". Please try a more specific address with city and state.`);
+        console.error('Destination geocoding failed:', error);
+        throw new Error(`Destination address not found: "${request.destination}"\n\nPlease try:\n• Adding city and state (e.g., "456 Oak Ave, Opelousas, LA")\n• Using a more specific address\n• Checking for typos`);
       }
 
-      // Get routes from Google Maps
+      if (!originValid || !destinationValid) {
+        throw new Error('One or both addresses could not be found. Please check your addresses and try again.');
+      }
+
+      console.log('Both addresses validated, requesting directions...');
+
+      // Get routes from Google Maps with enhanced error handling
       const routeResponse = await this.googleMapsService.getRoutes({
         origin: request.origin,
         destination: request.destination,
@@ -49,6 +67,12 @@ export class RouteAnalysisService {
         avoidTolls: request.avoidTolls
       });
 
+      console.log('Google Maps returned', routeResponse.routes.length, 'routes');
+
+      if (!routeResponse.routes || routeResponse.routes.length === 0) {
+        throw new Error(`No routes found between:\n• From: "${request.origin}"\n• To: "${request.destination}"\n\nPlease verify both locations are accessible by road.`);
+      }
+
       // Convert Google Maps routes to our Route format
       const routes = await Promise.all(
         routeResponse.routes.map((googleRoute, index) =>
@@ -56,29 +80,40 @@ export class RouteAnalysisService {
         )
       );
 
+      console.log('Converted', routes.length, 'routes, calculating risk analysis...');
+
       // Use enhanced route comparison
       const routesWithAnalysis = RiskCalculator.compareRoutes(routes, request.vehicle);
       const recommendedRouteId = routesWithAnalysis[0]?.id || '';
+
+      console.log('Route analysis complete, recommended route:', recommendedRouteId);
 
       return {
         routes: routesWithAnalysis,
         recommendedRouteId
       };
     } catch (error) {
+      console.error('Route analysis error:', error);
+      
       // Provide more helpful error messages
       if (error instanceof Error) {
         if (error.message.includes('NOT_FOUND')) {
-          throw new Error(`Address not found. Please check your addresses and try again:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"\n\nTip: Use complete addresses with city and state.`);
+          throw new Error(`Address not found. Please check your addresses:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"\n\nTip: Include city and state for better results.`);
         } else if (error.message.includes('ZERO_RESULTS')) {
-          throw new Error(`No route found between these locations:\n• From: "${request.origin}"\n• To: "${request.destination}"\n\nPlease check if both locations are accessible by road.`);
+          throw new Error(`No route found between these locations:\n• From: "${request.origin}"\n• To: "${request.destination}"\n\nPlease verify both locations are accessible by road.`);
         } else if (error.message.includes('OVER_QUERY_LIMIT')) {
-          throw new Error('Too many requests to Google Maps. Please wait a moment and try again.');
+          throw new Error('Google Maps API limit reached. Please wait a moment and try again.');
         } else if (error.message.includes('REQUEST_DENIED')) {
-          throw new Error('Google Maps API request denied. Please check your API key configuration and ensure the following APIs are enabled:\n• Maps JavaScript API\n• Directions API\n• Geocoding API\n• Places API');
+          throw new Error('Google Maps API access denied. Please check your API key configuration.');
+        } else if (error.message.includes('API key')) {
+          throw new Error('Google Maps API key is missing or invalid. Please check your configuration.');
         }
+        
+        // If it's already a formatted error message, pass it through
+        throw error;
       }
       
-      throw error;
+      throw new Error('Route analysis failed. Please check your addresses and try again.');
     }
   }
 
@@ -90,10 +125,14 @@ export class RouteAnalysisService {
     const routeId = `route-${index + 1}`;
     const routeName = this.generateRouteName(googleRoute, index);
     
+    console.log(`Converting route ${index + 1}: ${routeName}`);
+    
     // Extract basic route info
     const leg = googleRoute.legs[0];
     const totalDistance = this.metersToMiles(leg.distance?.value || 0);
     const estimatedTime = Math.round((leg.duration?.value || 0) / 60);
+
+    console.log(`Route ${index + 1} - Distance: ${totalDistance}mi, Time: ${estimatedTime}min`);
 
     // Create segments from route steps with enhanced analysis
     const segments = await this.createSegmentsFromSteps(
@@ -102,8 +141,12 @@ export class RouteAnalysisService {
       vehicle
     );
 
+    console.log(`Created ${segments.length} segments for route ${index + 1}`);
+
     // Identify critical points with enhanced detection
     const criticalPoints = this.identifyCriticalPoints(segments, vehicle);
+
+    console.log(`Identified ${criticalPoints.length} critical points for route ${index + 1}`);
 
     return {
       id: routeId,
@@ -122,10 +165,23 @@ export class RouteAnalysisService {
       return summary;
     }
     
+    // Try to extract main roads from the route
+    const leg = googleRoute.legs[0];
+    if (leg && leg.steps && leg.steps.length > 0) {
+      const mainRoads = leg.steps
+        .map(step => this.extractStreetName(step.instructions))
+        .filter(name => name && !name.includes('Unknown'))
+        .slice(0, 2);
+      
+      if (mainRoads.length > 0) {
+        return `via ${mainRoads.join(' & ')}`;
+      }
+    }
+    
     // Fallback names
     const names = [
       'Main Route',
-      'Highway Route', 
+      'Alternative Route', 
       'Scenic Route',
       'Express Route',
       'Local Route'
@@ -140,6 +196,8 @@ export class RouteAnalysisService {
     vehicle: Vehicle
   ): Promise<RouteSegment[]> {
     const segments: RouteSegment[] = [];
+
+    console.log(`Processing ${steps.length} steps for route segments`);
 
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
@@ -173,6 +231,7 @@ export class RouteAnalysisService {
       segments.push(segment);
     }
 
+    console.log(`Created ${segments.length} segments`);
     return segments;
   }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Navigation, Loader2, Star, AlertCircle, MapPin } from 'lucide-react';
+import { Navigation, Loader2, Star, AlertCircle, MapPin, CheckCircle } from 'lucide-react';
 import { LocationInput } from './LocationInput';
 import { SavedLocationsManager } from './SavedLocationsManager';
 import { SavedLocation } from '../types';
@@ -24,6 +24,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   const [locationInputTarget, setLocationInputTarget] = useState<'origin' | 'destination' | null>(null);
   const [validationErrors, setValidationErrors] = useState<{origin?: string; destination?: string}>({});
   const [apiStatus, setApiStatus] = useState<'checking' | 'ready' | 'error'>('checking');
+  const [apiError, setApiError] = useState<string>('');
 
   // Update local state when initial values change (from parent)
   useEffect(() => {
@@ -42,18 +43,25 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   useEffect(() => {
     const checkApiStatus = async () => {
       try {
+        console.log('Checking Google Maps API status...');
         const googleMapsService = GoogleMapsService.getInstance();
         const hasApiKey = googleMapsService.hasApiKey();
         
         if (!hasApiKey) {
           setApiStatus('error');
+          setApiError('Google Maps API key not configured. Please add VITE_GOOGLE_MAPS_API_KEY to your .env file.');
           return;
         }
 
+        console.log('API key found, initializing Google Maps...');
         await googleMapsService.initialize();
+        console.log('Google Maps initialized successfully');
         setApiStatus('ready');
+        setApiError('');
       } catch (error) {
+        console.error('Google Maps initialization failed:', error);
         setApiStatus('error');
+        setApiError(error instanceof Error ? error.message : 'Failed to initialize Google Maps');
       }
     };
 
@@ -70,7 +78,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
     }
 
     // Check if it's just coordinates without context
-    const coordOnlyPattern = /^[-+]?\d*\.?\d+,\s*[-+]?\d*\.?\d+$/;
+    const coordOnlyPattern = /^[-+]?\d*\.?\d*,\s*[-+]?\d*\.?\d*$/;
     if (coordOnlyPattern.test(address.trim())) {
       return null; // Coordinates are valid
     }
@@ -88,6 +96,8 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('Form submitted with:', { origin, destination, apiStatus });
+    
     // Clear previous validation errors
     setValidationErrors({});
     
@@ -104,11 +114,13 @@ export const RouteInput: React.FC<RouteInputProps> = ({
     }
 
     if (apiStatus !== 'ready') {
+      console.log('API not ready, status:', apiStatus);
       return;
     }
 
     // Proceed with route analysis
     if (origin.trim() && destination.trim() && !isLoading) {
+      console.log('Calling route analysis...');
       onRouteRequest(origin.trim(), destination.trim());
     }
   };
@@ -149,14 +161,49 @@ export const RouteInput: React.FC<RouteInputProps> = ({
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Route Planning</h2>
           </div>
           
-          <button
-            onClick={() => setShowSavedLocations(true)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors"
-          >
-            <Star className="w-4 h-4" />
-            Saved Locations
-          </button>
+          <div className="flex items-center gap-3">
+            {/* API Status Indicator */}
+            <div className="flex items-center gap-2">
+              {apiStatus === 'checking' && (
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
+                  <span className="text-sm">Checking API...</span>
+                </div>
+              )}
+              {apiStatus === 'ready' && (
+                <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                  <CheckCircle className="w-4 h-4" />
+                  <span className="text-sm">Ready</span>
+                </div>
+              )}
+              {apiStatus === 'error' && (
+                <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-sm">API Error</span>
+                </div>
+              )}
+            </div>
+            
+            <button
+              onClick={() => setShowSavedLocations(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors"
+            >
+              <Star className="w-4 h-4" />
+              Saved Locations
+            </button>
+          </div>
         </div>
+
+        {/* API Error Display */}
+        {apiStatus === 'error' && (
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
+            <div className="flex items-center gap-2 text-red-800 dark:text-red-300">
+              <AlertCircle className="w-5 h-5" />
+              <span className="font-medium">Google Maps API Error</span>
+            </div>
+            <p className="text-sm text-red-700 dark:text-red-400 mt-1">{apiError}</p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -165,7 +212,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
               value={origin}
               onChange={handleOriginChange}
               placeholder="Enter starting address (e.g., 926 Anthony Ave, Opelousas, LA)"
-              disabled={isLoading}
+              disabled={isLoading || apiStatus !== 'ready'}
               onLocationSelect={(location) => {
                 setOrigin(location.address);
                 setValidationErrors(prev => ({ ...prev, origin: undefined }));
@@ -185,7 +232,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
               value={destination}
               onChange={handleDestinationChange}
               placeholder="Enter destination address (e.g., 429 Cherry St, Lafayette, LA)"
-              disabled={isLoading}
+              disabled={isLoading || apiStatus !== 'ready'}
               onLocationSelect={(location) => {
                 setDestination(location.address);
                 setValidationErrors(prev => ({ ...prev, destination: undefined }));
@@ -228,6 +275,9 @@ export const RouteInput: React.FC<RouteInputProps> = ({
             <div>• Example: "926 Anthony Ave, Opelousas, LA" or "429 Cherry St, Lafayette, LA"</div>
             <div>• Business names work too: "Walmart, Lafayette, LA"</div>
             <div>• Click the crosshair icon to use your current location</div>
+            {apiStatus === 'ready' && (
+              <div className="text-green-700 dark:text-green-400 font-medium">✓ Google Maps API connected and ready</div>
+            )}
           </div>
         </div>
       </div>
