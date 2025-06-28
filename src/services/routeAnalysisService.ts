@@ -56,18 +56,12 @@ export class RouteAnalysisService {
         )
       );
 
-      // Calculate risk scores for all routes
-      const routesWithRisk = routes.map(route => ({
-        ...route,
-        overallRisk: RiskCalculator.calculateRouteRisk(route, request.vehicle)
-      }));
-
-      // Sort by risk (lowest first) and select recommended route
-      routesWithRisk.sort((a, b) => a.overallRisk - b.overallRisk);
-      const recommendedRouteId = routesWithRisk[0]?.id || '';
+      // Use enhanced route comparison
+      const routesWithAnalysis = RiskCalculator.compareRoutes(routes, request.vehicle);
+      const recommendedRouteId = routesWithAnalysis[0]?.id || '';
 
       return {
-        routes: routesWithRisk,
+        routes: routesWithAnalysis,
         recommendedRouteId
       };
     } catch (error) {
@@ -101,13 +95,14 @@ export class RouteAnalysisService {
     const totalDistance = this.metersToMiles(leg.distance?.value || 0);
     const estimatedTime = Math.round((leg.duration?.value || 0) / 60);
 
-    // Create segments from route steps
+    // Create segments from route steps with enhanced analysis
     const segments = await this.createSegmentsFromSteps(
       googleRoute.legs[0].steps,
-      routeId
+      routeId,
+      vehicle
     );
 
-    // Identify critical points
+    // Identify critical points with enhanced detection
     const criticalPoints = this.identifyCriticalPoints(segments, vehicle);
 
     return {
@@ -116,7 +111,7 @@ export class RouteAnalysisService {
       segments,
       totalDistance,
       estimatedTime,
-      overallRisk: 0, // Will be calculated later
+      overallRisk: 0, // Will be calculated by RiskCalculator
       criticalPoints
     };
   }
@@ -141,7 +136,8 @@ export class RouteAnalysisService {
 
   private async createSegmentsFromSteps(
     steps: google.maps.DirectionsStep[],
-    routeId: string
+    routeId: string,
+    vehicle: Vehicle
   ): Promise<RouteSegment[]> {
     const segments: RouteSegment[] = [];
 
@@ -159,6 +155,9 @@ export class RouteAnalysisService {
       // Extract street name from instructions
       const streetName = this.extractStreetName(step.instructions);
       
+      // Enhanced risk factor calculation
+      const riskFactors = this.calculateEnhancedRiskFactors(step, roadData, vehicle);
+      
       const segment: RouteSegment = {
         id: `${routeId}-seg-${i + 1}`,
         startLat: startLocation.lat(),
@@ -167,20 +166,71 @@ export class RouteAnalysisService {
         endLng: endLocation.lng(),
         streetName,
         riskScore: 0, // Will be calculated by RiskCalculator
-        riskFactors: {
-          pedestrianTraffic: roadData.pedestrianTraffic || 30,
-          roadWidth: roadData.roadWidth || 40,
-          trafficCongestion: this.estimateTrafficCongestion(step),
-          speedLimit: roadData.speedLimit || 35,
-          heightRestriction: roadData.heightRestrictions || 0
-        },
-        description: this.generateSegmentDescription(step, roadData)
+        riskFactors,
+        description: this.generateEnhancedSegmentDescription(step, roadData, riskFactors, vehicle)
       };
 
       segments.push(segment);
     }
 
     return segments;
+  }
+
+  private calculateEnhancedRiskFactors(
+    step: google.maps.DirectionsStep,
+    roadData: RoadData,
+    vehicle: Vehicle
+  ) {
+    const baseFactors = {
+      pedestrianTraffic: roadData.pedestrianTraffic || 30,
+      roadWidth: roadData.roadWidth || 40,
+      trafficCongestion: this.estimateTrafficCongestion(step),
+      speedLimit: roadData.speedLimit || 35,
+      heightRestriction: roadData.heightRestrictions || 0
+    };
+
+    // Enhance factors based on step instructions and vehicle type
+    const instructions = step.instructions.toLowerCase();
+    
+    // Detect turns and adjust road width risk
+    if (instructions.includes('turn') || instructions.includes('onto')) {
+      baseFactors.roadWidth += 20; // Turns are more challenging
+      
+      // Sharp turns are especially difficult for buses
+      if ((instructions.includes('sharp') || instructions.includes('right') || instructions.includes('left')) && 
+          vehicle.length >= 35) {
+        baseFactors.roadWidth += 30;
+      }
+    }
+
+    // Detect intersections
+    if (instructions.includes('intersection') || instructions.includes('cross')) {
+      baseFactors.pedestrianTraffic += 25;
+    }
+
+    // Detect highway vs local roads
+    if (instructions.includes('highway') || instructions.includes('freeway') || instructions.includes('interstate')) {
+      baseFactors.pedestrianTraffic = Math.max(baseFactors.pedestrianTraffic - 40, 0);
+      baseFactors.roadWidth = Math.max(baseFactors.roadWidth - 30, 10);
+    }
+
+    // Detect residential areas
+    if (instructions.includes('residential') || instructions.includes('neighborhood')) {
+      baseFactors.pedestrianTraffic += 20;
+      baseFactors.roadWidth += 15;
+    }
+
+    // Detect school zones or similar
+    if (instructions.includes('school') || instructions.includes('park')) {
+      baseFactors.pedestrianTraffic += 40;
+    }
+
+    // Clamp all values to 0-100 range
+    Object.keys(baseFactors).forEach(key => {
+      baseFactors[key as keyof typeof baseFactors] = Math.min(Math.max(baseFactors[key as keyof typeof baseFactors], 0), 100);
+    });
+
+    return baseFactors;
   }
 
   private extractStreetName(instructions: string): string {
@@ -192,7 +242,8 @@ export class RouteAnalysisService {
       /on (.+?)(?:\s|$)/i,
       /onto (.+?)(?:\s|$)/i,
       /via (.+?)(?:\s|$)/i,
-      /toward (.+?)(?:\s|$)/i
+      /toward (.+?)(?:\s|$)/i,
+      /continue on (.+?)(?:\s|$)/i
     ];
 
     for (const pattern of patterns) {
@@ -214,24 +265,42 @@ export class RouteAnalysisService {
     const speed = (distance / 1609.34) / (duration / 3600); // mph
 
     // Lower speeds indicate higher congestion
+    if (speed < 10) return 90;
     if (speed < 15) return 80;
     if (speed < 25) return 60;
     if (speed < 35) return 40;
-    return 20;
+    if (speed < 45) return 25;
+    return 15;
   }
 
-  private generateSegmentDescription(
+  private generateEnhancedSegmentDescription(
     step: google.maps.DirectionsStep,
-    roadData: RoadData
+    roadData: RoadData,
+    riskFactors: any,
+    vehicle: Vehicle
   ): string {
     const factors = [];
+    const instructions = step.instructions.toLowerCase();
     
-    if ((roadData.pedestrianTraffic || 0) > 70) {
+    // Analyze turn complexity for buses
+    if (vehicle.length >= 35 && (instructions.includes('turn') || instructions.includes('onto'))) {
+      if (instructions.includes('sharp') || riskFactors.roadWidth > 70) {
+        factors.push('challenging turn for large vehicle');
+      } else {
+        factors.push('moderate turn');
+      }
+    }
+    
+    if (riskFactors.pedestrianTraffic > 70) {
       factors.push('heavy pedestrian activity');
     }
     
-    if ((roadData.roadWidth || 0) > 60) {
-      factors.push('narrow road');
+    if (riskFactors.roadWidth > 60) {
+      factors.push('narrow road conditions');
+    }
+    
+    if (riskFactors.trafficCongestion > 70) {
+      factors.push('heavy traffic congestion');
     }
     
     if (roadData.heightRestrictions && roadData.heightRestrictions > 0) {
@@ -250,32 +319,46 @@ export class RouteAnalysisService {
 
     segments.forEach((segment, index) => {
       const riskScore = RiskCalculator.calculateSegmentRisk(segment, vehicle);
+      const detailedRisk = RiskCalculator.calculateDetailedRisk(segment, vehicle);
       
-      // Identify critical points based on risk factors
-      if (riskScore > 70) {
+      // Enhanced critical point detection
+      if (riskScore > 60 || detailedRisk.primaryConcerns.length > 0) {
         let type: CriticalPoint['type'] = 'intersection';
         let description = '';
 
+        // Height restrictions are always critical
         if (segment.riskFactors.heightRestriction > 0 && 
             segment.riskFactors.heightRestriction <= vehicle.height + 1) {
           type = 'bridge';
-          description = `Height restriction: ${segment.riskFactors.heightRestriction}ft clearance`;
-        } else if (segment.riskFactors.roadWidth > 60) {
+          description = `Height restriction: ${segment.riskFactors.heightRestriction}ft clearance (Vehicle: ${vehicle.height}ft)`;
+        } 
+        // Narrow roads for large vehicles
+        else if (segment.riskFactors.roadWidth > 70 && vehicle.length >= 35) {
           type = 'narrow_road';
-          description = 'Narrow road with limited maneuvering space';
-        } else if (segment.riskFactors.pedestrianTraffic > 80) {
-          type = 'intersection';
-          description = 'High pedestrian traffic area';
-        } else {
+          description = 'Narrow road with limited maneuvering space for large vehicle';
+        } 
+        // Turn complexity for buses
+        else if (vehicle.length >= 35 && segment.streetName.toLowerCase().includes('turn')) {
           type = 'turn';
-          description = 'Complex navigation point';
+          const turnAnalysis = RiskCalculator.analyzeTurn(segment, vehicle);
+          description = `${turnAnalysis.difficulty.replace('_', ' ')} turn - ${Math.round(turnAnalysis.angle)}° angle, ${Math.round(turnAnalysis.clearanceRequired)}ft clearance needed`;
+        }
+        // High pedestrian areas
+        else if (segment.riskFactors.pedestrianTraffic > 80) {
+          type = 'intersection';
+          description = 'High pedestrian traffic area with crossing activity';
+        } 
+        // General high-risk area
+        else {
+          type = 'intersection';
+          description = detailedRisk.primaryConcerns[0] || 'High-risk navigation point';
         }
 
         criticalPoints.push({
           segmentId: segment.id,
           type,
-          riskLevel: riskScore > 85 ? 'critical' : 'high',
-          description: `Segment ${index + 1}: ${description}`,
+          riskLevel: riskScore > 80 ? 'critical' : 'high',
+          description: `${description}`,
           position: index
         });
       }
