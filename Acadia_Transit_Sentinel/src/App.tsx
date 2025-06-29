@@ -5,8 +5,7 @@ import { LocationSearch } from './components/LocationSearch';
 import { RouteDetails } from './components/RouteDetails';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
-import { useMapContext, MapProvider } from './contexts/MapContext';
-import { Route } from './types';
+import { MapProvider, useMapContext } from './contexts/MapContext';
 
 function AppContent() {
   const { selectedRoute, setSelectedRoute } = useMapContext();

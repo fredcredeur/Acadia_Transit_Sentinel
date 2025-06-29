@@ -29,7 +29,6 @@ export function MapComponent() {
         const mapInstance = new google.maps.Map(mapRef.current, {
           center: { lat: 44.3386, lng: -68.2733 },
           zoom: 12,
-          mapId: 'DEMO_MAP_ID',
           mapTypeControl: true,
           fullscreenControl: true,
           streetViewControl: true,
@@ -45,7 +44,9 @@ export function MapComponent() {
 
   // Handle selected route changes
   useEffect(() => {
-    if (!selectedRoute) {
+    const { map } = useMapContext();
+    
+    if (!map || !selectedRoute) {
       // Clear existing route visualization
       if (polylineRef.current) {
         polylineRef.current.setMap(null);
@@ -58,9 +59,6 @@ export function MapComponent() {
       
       return;
     }
-    
-    const { map } = useMapContext();
-    if (!map) return;
     
     // Clear previous route visualization
     if (polylineRef.current) {

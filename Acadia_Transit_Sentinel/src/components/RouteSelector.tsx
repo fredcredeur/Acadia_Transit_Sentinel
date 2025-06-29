@@ -3,13 +3,14 @@ import { Route } from '../types';
 import { useMapContext } from '../contexts/MapContext';
 import { mockRoutes } from '../data/mockRoutes';
 import { Clock, Navigation, AlertTriangle } from 'lucide-react';
+import { analyzeRouteRisk, getAllRiskFactors } from '../services/routeAnalysisService';
 
 interface RouteSelectorProps {
   onRouteSelect: (route: Route | null) => void;
 }
 
 export function RouteSelector({ onRouteSelect }: RouteSelectorProps) {
-  const { origin, destination } = useMapContext();
+  const { origin, destination, setRiskFactors } = useMapContext();
   const [routes, setRoutes] = useState<Route[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -19,13 +20,20 @@ export function RouteSelector({ onRouteSelect }: RouteSelectorProps) {
       
       // Simulate API call to get routes
       setTimeout(() => {
-        setRoutes(mockRoutes);
+        // Analyze routes for risk factors
+        const analyzedRoutes = mockRoutes.map(route => {
+          const { route: analyzedRoute } = analyzeRouteRisk(route);
+          return analyzedRoute;
+        });
+        
+        setRoutes(analyzedRoutes);
+        setRiskFactors(getAllRiskFactors());
         setLoading(false);
       }, 1000);
     } else {
       setRoutes([]);
     }
-  }, [origin, destination]);
+  }, [origin, destination, setRiskFactors]);
 
   if (!origin || !destination) {
     return null;
