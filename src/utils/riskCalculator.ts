@@ -1,5 +1,15 @@
 import { Vehicle, RouteSegment, Route, StopLocation } from '../types';
 
+export interface RoadContext {
+  type: 'residential' | 'commercial' | 'industrial' | 'highway' | 'arterial' | 'truck_route';
+  isTruckFriendly: boolean;
+  hasTrafficSignals: boolean;
+  hasStopSigns: boolean;
+  schoolZone: boolean;
+  commercialLoading: boolean;
+  designatedTruckRoute: boolean;
+}
+
 export interface TurnAnalysis {
   angle: number;
   radius: number;
@@ -8,288 +18,351 @@ export interface TurnAnalysis {
   recommendation: string;
 }
 
-export interface RiskBreakdown {
+export interface EnhancedRiskBreakdown {
   pedestrianRisk: number;
   maneuveringRisk: number;
   infrastructureRisk: number;
   trafficRisk: number;
+  roadContextRisk: number;
+  intersectionRisk: number;
   overallRisk: number;
+  roadContext: RoadContext;
   primaryConcerns: string[];
   recommendations: string[];
+  riskMitigators: string[]; // Things that REDUCE risk
 }
 
 export class RiskCalculator {
+  // Revised weights that consider road context
   private static readonly WEIGHTS = {
-    pedestrianTraffic: 0.25,
-    roadWidth: 0.25,
-    trafficCongestion: 0.15,
-    speedLimit: 0.10,
-    heightRestriction: 0.15,
-    turnComplexity: 0.10
-  };
-
-  // Bus-specific constants for 40-foot vehicles
-  private static readonly BUS_CONSTANTS = {
-    TURNING_RADIUS: 42, // feet - typical for 40ft bus
-    REAR_OVERHANG: 8,   // feet - rear overhang from rear axle
-    FRONT_OVERHANG: 6,  // feet - front overhang from front axle
-    WHEELBASE: 26,      // feet - distance between axles
-    SAFE_CLEARANCE: 3   // feet - minimum safe clearance
+    pedestrianTraffic: 0.20,    // Reduced - context matters more
+    maneuvering: 0.15,          // Vehicle-specific maneuvering
+    infrastructure: 0.20,       // Height/width restrictions
+    traffic: 0.15,              // Congestion and speed
+    roadContext: 0.20,          // NEW: Road type appropriateness
+    intersection: 0.10          // NEW: Intersection type risk
   };
 
   static calculateSegmentRisk(segment: RouteSegment, vehicle: Vehicle): number {
+    const roadContext = this.analyzeRoadContext(segment);
+    const enhancedBreakdown = this.calculateEnhancedRisk(segment, vehicle, roadContext);
+    
+    return enhancedBreakdown.overallRisk;
+  }
+
+  static calculateEnhancedRisk(
+    segment: RouteSegment, 
+    vehicle: Vehicle,
+    roadContext?: RoadContext
+  ): EnhancedRiskBreakdown {
+    
+    const context = roadContext || this.analyzeRoadContext(segment);
     const factors = segment.riskFactors;
     
-    // Calculate individual risk components
-    const pedestrianRisk = this.calculatePedestrianRisk(factors.pedestrianTraffic, vehicle);
-    const maneuveringRisk = this.calculateManeuveringRisk(factors.roadWidth, vehicle);
+    // Calculate risk components with context awareness
+    const pedestrianRisk = this.calculateContextualPedestrianRisk(factors.pedestrianTraffic, vehicle, context);
+    const maneuveringRisk = this.calculateVehicleSpecificManeuveringRisk(segment, vehicle, context);
     const infrastructureRisk = this.calculateInfrastructureRisk(factors.heightRestriction, vehicle.height);
-    const trafficRisk = this.calculateTrafficRisk(factors.trafficCongestion, factors.speedLimit);
-    const turnRisk = this.calculateTurnRisk(segment, vehicle);
-
-    // Weighted risk calculation
-    const riskScore = 
+    const trafficRisk = this.calculateIntelligentTrafficRisk(factors, context);
+    const roadContextRisk = this.calculateRoadContextRisk(vehicle, context);
+    const intersectionRisk = this.calculateIntersectionRisk(segment, vehicle, context);
+    
+    // Apply weights with context modifiers
+    const weightedRisk = 
       (pedestrianRisk * this.WEIGHTS.pedestrianTraffic) +
-      (maneuveringRisk * this.WEIGHTS.roadWidth) +
-      (trafficRisk * this.WEIGHTS.trafficCongestion) +
-      (this.getSpeedRisk(factors.speedLimit) * this.WEIGHTS.speedLimit) +
-      (infrastructureRisk * this.WEIGHTS.heightRestriction) +
-      (turnRisk * this.WEIGHTS.turnComplexity);
+      (maneuveringRisk * this.WEIGHTS.maneuvering) +
+      (infrastructureRisk * this.WEIGHTS.infrastructure) +
+      (trafficRisk * this.WEIGHTS.traffic) +
+      (roadContextRisk * this.WEIGHTS.roadContext) +
+      (intersectionRisk * this.WEIGHTS.intersection);
 
-    return Math.min(Math.max(riskScore, 0), 100);
-  }
-
-  static calculateStopRisk(stop: StopLocation, vehicle: Vehicle): number {
-    let risk = (stop.estimatedStopTime || 15) * 0.5; // Base risk on stop time
-    const sizeMultiplier = this.getVehicleSizeMultiplier(vehicle);
-    risk *= sizeMultiplier;
-    return Math.min(risk, 100);
-  }
-
-  static calculateDetailedRisk(segment: RouteSegment, vehicle: Vehicle): RiskBreakdown {
-    const factors = segment.riskFactors;
+    const overallRisk = Math.min(Math.max(weightedRisk, 0), 100);
     
-    const pedestrianRisk = this.calculatePedestrianRisk(factors.pedestrianTraffic, vehicle);
-    const maneuveringRisk = this.calculateManeuveringRisk(factors.roadWidth, vehicle);
-    const infrastructureRisk = this.calculateInfrastructureRisk(factors.heightRestriction, vehicle.height);
-    const trafficRisk = this.calculateTrafficRisk(factors.trafficCongestion, factors.speedLimit);
-    
-    const overallRisk = this.calculateSegmentRisk(segment, vehicle);
-    
-    const primaryConcerns: string[] = [];
-    const recommendations: string[] = [];
-
-    // Analyze primary concerns
-    if (pedestrianRisk > 60) {
-      primaryConcerns.push('Heavy pedestrian activity');
-      recommendations.push('Reduce speed in pedestrian areas and use extra caution at crosswalks');
-    }
-    
-    if (maneuveringRisk > 60) {
-      primaryConcerns.push('Limited maneuvering space');
-      recommendations.push('Use spotters for tight spaces and consider alternative routes during peak hours');
-    }
-    
-    if (infrastructureRisk > 80) {
-      primaryConcerns.push('Height clearance critical');
-      recommendations.push('Verify exact vehicle height and consider alternative route');
-    }
-    
-    if (trafficRisk > 70) {
-      primaryConcerns.push('Heavy traffic congestion');
-      recommendations.push('Plan for extended travel time and maintain safe following distance');
-    }
-
-    // Turn-specific analysis for buses
-    if (this.isBusLength(vehicle)) {
-      const turnAnalysis = this.analyzeTurn(segment, vehicle);
-      if (turnAnalysis.difficulty === 'very_difficult' || turnAnalysis.difficulty === 'difficult') {
-        primaryConcerns.push(`${turnAnalysis.difficulty === 'very_difficult' ? 'Very difficult' : 'Difficult'} turn maneuver`);
-        recommendations.push(turnAnalysis.recommendation);
-      }
-    }
+    const analysis = this.generateRiskAnalysis(
+      { pedestrianRisk, maneuveringRisk, infrastructureRisk, trafficRisk, roadContextRisk, intersectionRisk },
+      vehicle,
+      context,
+      overallRisk
+    );
 
     return {
       pedestrianRisk,
       maneuveringRisk,
       infrastructureRisk,
       trafficRisk,
+      roadContextRisk,
+      intersectionRisk,
       overallRisk,
-      primaryConcerns,
-      recommendations
+      roadContext: context,
+      ...analysis
     };
   }
 
-  static calculateRouteRisk(route: Route, vehicle: Vehicle): number {
-    if (route.segments.length === 0) return 0;
-
-    const segmentRisks = route.segments.map(segment => 
-      this.calculateSegmentRisk(segment, vehicle)
-    );
-    
-    // Weight higher risk segments more heavily
-    const weightedRisks = segmentRisks.map(risk => {
-      if (risk > 80) return risk * 1.3; // Critical segments get 30% more weight
-      if (risk > 60) return risk * 1.15; // High risk segments get 15% more weight
-      return risk;
-    });
-
-    const stopRisks = route.stops?.map((stop: StopLocation) => this.calculateStopRisk(stop, vehicle)) || [];
-    const totalRisk = weightedRisks.reduce((sum: number, risk: number) => sum + risk, 0) + stopRisks.reduce((sum: number, risk: number) => sum + risk, 0);
-    const totalItems = weightedRisks.length + stopRisks.length;
-
-    return totalItems > 0 ? Math.min(totalRisk / totalItems, 100) : 0;
-  }
-
-  static compareRoutes(routes: Route[], vehicle: Vehicle): Array<Route & { 
-    riskBreakdown: RiskBreakdown; 
-    busSpecificFactors: string[];
-    timeVsRiskRatio: number;
-  }> {
-    return routes.map(route => {
-      const overallRisk = this.calculateRouteRisk(route, vehicle);
-      
-      // Calculate average risk breakdown for the route
-      const segmentBreakdowns = route.segments.map(segment => 
-        this.calculateDetailedRisk(segment, vehicle)
-      );
-      
-      const avgBreakdown: RiskBreakdown = {
-        pedestrianRisk: segmentBreakdowns.reduce((sum, b) => sum + b.pedestrianRisk, 0) / segmentBreakdowns.length,
-        maneuveringRisk: segmentBreakdowns.reduce((sum, b) => sum + b.maneuveringRisk, 0) / segmentBreakdowns.length,
-        infrastructureRisk: segmentBreakdowns.reduce((sum, b) => sum + b.infrastructureRisk, 0) / segmentBreakdowns.length,
-        trafficRisk: segmentBreakdowns.reduce((sum, b) => sum + b.trafficRisk, 0) / segmentBreakdowns.length,
-        overallRisk,
-        primaryConcerns: [...new Set(segmentBreakdowns.flatMap(b => b.primaryConcerns))],
-        recommendations: [...new Set(segmentBreakdowns.flatMap(b => b.recommendations))]
-      };
-
-      // Bus-specific factors
-      const busSpecificFactors: string[] = [];
-      
-      if (this.isBusLength(vehicle)) {
-        const difficultTurns = route.segments.filter(segment => {
-          const turnAnalysis = this.analyzeTurn(segment, vehicle);
-          return turnAnalysis.difficulty === 'difficult' || turnAnalysis.difficulty === 'very_difficult';
-        }).length;
-        
-        if (difficultTurns > 0) {
-          busSpecificFactors.push(`${difficultTurns} challenging turn${difficultTurns > 1 ? 's' : ''} for 40ft vehicle`);
-        }
-
-        const heightRestrictions = route.segments.filter(segment => 
-          segment.riskFactors.heightRestriction > 0 && 
-          segment.riskFactors.heightRestriction <= vehicle.height + 1
-        ).length;
-        
-        if (heightRestrictions > 0) {
-          busSpecificFactors.push(`${heightRestrictions} height restriction${heightRestrictions > 1 ? 's' : ''} to monitor`);
-        }
-
-        const narrowSections = route.segments.filter(segment => 
-          segment.riskFactors.roadWidth > 60
-        ).length;
-        
-        if (narrowSections > 0) {
-          busSpecificFactors.push(`${narrowSections} narrow section${narrowSections > 1 ? 's' : ''} requiring careful navigation`);
-        }
-      }
-
-      // Time vs. risk is no longer a simple ratio, handled in sort.
-      return {
-        ...route,
-        overallRisk,
-        riskBreakdown: avgBreakdown,
-        busSpecificFactors,
-        timeVsRiskRatio: 0 // Placeholder, not used in new sort
-      };
-    }).sort((a, b) => {
-      // Sort by overall risk first.
-      if (Math.abs(a.overallRisk - b.overallRisk) >= 5) {
-        return a.overallRisk - b.overallRisk;
-      }
-      
-      // If risks are similar (within 5 points), prioritize the faster route.
-      return a.estimatedTime - b.estimatedTime;
-    });
-  }
-
-  static analyzeTurn(segment: RouteSegment, vehicle: Vehicle): TurnAnalysis {
-    // Simulate turn analysis based on segment characteristics
-    // In production, this would use actual turn angle data from Google Maps
-    
+  private static analyzeRoadContext(segment: RouteSegment): RoadContext {
     const streetName = segment.streetName.toLowerCase();
-    let estimatedAngle = 0;
+    const factors = segment.riskFactors;
     
-    // Estimate turn angle from street name and risk factors
-    if (streetName.includes('turn') || segment.riskFactors.roadWidth > 70) {
-      estimatedAngle = 90 + (segment.riskFactors.roadWidth - 50); // Sharper turns for narrow roads
-    } else if (segment.riskFactors.pedestrianTraffic > 80) {
-      estimatedAngle = 45; // Moderate turns in pedestrian areas
-    } else {
-      estimatedAngle = 30; // Gentle curves
-    }
-
-    // Clamp angle between 0 and 180
-    estimatedAngle = Math.min(Math.max(estimatedAngle, 0), 180);
-
-    const radius = this.calculateTurnRadius(estimatedAngle, vehicle);
-    const clearanceRequired = this.calculateClearanceRequired(estimatedAngle, vehicle);
+    // Analyze road type from street name and characteristics
+    let type: RoadContext['type'] = 'arterial'; // default
+    let isTruckFriendly = false;
+    let designatedTruckRoute = false;
     
-    let difficulty: TurnAnalysis['difficulty'] = 'easy';
-    let recommendation = 'Standard turning procedure';
-
-    if (estimatedAngle > 120) {
-      difficulty = 'very_difficult';
-      recommendation = 'Very sharp turn - use spotter, check for pedestrians, and take wide approach';
-    } else if (estimatedAngle > 90) {
-      difficulty = 'difficult';
-      recommendation = 'Sharp turn - reduce speed, check mirrors, and ensure adequate clearance';
-    } else if (estimatedAngle > 60) {
-      difficulty = 'moderate';
-      recommendation = 'Moderate turn - maintain awareness of rear overhang swing';
+    // Highway/Interstate detection
+    if (streetName.includes('interstate') || streetName.includes('highway') || 
+        streetName.includes('freeway') || streetName.match(/^i-?\d+/) || 
+        streetName.match(/^us.?\d+/) || streetName.match(/^sr.?\d+/)) {
+      type = 'highway';
+      isTruckFriendly = true;
+      designatedTruckRoute = true;
     }
-
-    // Adjust difficulty based on road width
-    if (segment.riskFactors.roadWidth > 70 && difficulty !== 'very_difficult') {
-      difficulty = difficulty === 'easy' ? 'moderate' : 'difficult';
-      recommendation += '. Narrow road requires extra caution';
+    // Truck route detection
+    else if (streetName.includes('truck route') || streetName.includes('industrial') || 
+             streetName.includes('warehouse') || streetName.includes('port') ||
+             streetName.includes('logistics') || streetName.includes('freight')) {
+      type = 'truck_route';
+      isTruckFriendly = true;
+      designatedTruckRoute = true;
     }
+    // Industrial area detection
+    else if (streetName.includes('industrial') || streetName.includes('manufacturing') ||
+             streetName.includes('distribution') || streetName.includes('rail')) {
+      type = 'industrial';
+      isTruckFriendly = true;
+    }
+    // Commercial detection
+    else if (streetName.includes('commercial') || streetName.includes('business') || 
+             streetName.includes('main st') || streetName.includes('broadway') ||
+             factors.pedestrianTraffic > 60 && factors.speedLimit <= 35) {
+      type = 'commercial';
+      isTruckFriendly = factors.speedLimit >= 25; // Commercial with reasonable speeds
+    }
+    // Residential detection
+    else if (streetName.includes('residential') || streetName.includes('subdivision') ||
+             streetName.includes('circle') || streetName.includes('court') ||
+             streetName.includes('lane') && factors.speedLimit <= 30) {
+      type = 'residential';
+      isTruckFriendly = false;
+    }
+    
+    // Traffic control detection from speed patterns and congestion
+    const hasTrafficSignals = factors.speedLimit >= 35 && factors.trafficCongestion > 40;
+    const hasStopSigns = factors.speedLimit <= 25 && !hasTrafficSignals;
+    
+    // School zone detection
+    const schoolZone = segment.description.toLowerCase().includes('school') || 
+                      factors.speedLimit <= 20 ||
+                      (factors.pedestrianTraffic > 80 && factors.speedLimit <= 25);
+    
+    // Commercial loading zone detection
+    const commercialLoading = type === 'commercial' && factors.trafficCongestion > 50;
 
     return {
-      angle: estimatedAngle,
-      radius,
-      difficulty,
-      clearanceRequired,
-      recommendation
+      type,
+      isTruckFriendly,
+      hasTrafficSignals,
+      hasStopSigns,
+      schoolZone,
+      commercialLoading,
+      designatedTruckRoute
     };
   }
 
-  private static calculatePedestrianRisk(pedestrianTraffic: number, vehicle: Vehicle): number {
+  private static calculateContextualPedestrianRisk(
+    pedestrianTraffic: number, 
+    vehicle: Vehicle, 
+    context: RoadContext
+  ): number {
     let risk = pedestrianTraffic;
     
-    // Larger vehicles pose higher risk to pedestrians
-    const sizeMultiplier = this.getVehicleSizeMultiplier(vehicle);
+    // Context-based adjustments
+    switch (context.type) {
+      case 'highway':
+        risk = Math.max(risk - 70, 0); // Highways have minimal pedestrians
+        break;
+      case 'truck_route':
+        risk = Math.max(risk - 40, 0); // Truck routes expect large vehicles
+        break;
+      case 'industrial':
+        risk = Math.max(risk - 30, 10); // Industrial areas have some foot traffic
+        break;
+      case 'commercial':
+        // Commercial areas have expected pedestrian activity
+        if (context.hasTrafficSignals) {
+          risk = Math.max(risk - 15, 0); // Signals manage pedestrian flow
+        }
+        break;
+      case 'residential':
+        risk += 20; // Large vehicles shouldn't be in residential
+        break;
+    }
+    
+    // School zone penalty
+    if (context.schoolZone) {
+      risk += 30;
+    }
+    
+    // Vehicle size adjustment (smaller for appropriate roads)
+    const sizeMultiplier = this.getContextAwareSizeMultiplier(vehicle, context);
     risk *= sizeMultiplier;
     
-    // Bus-specific adjustments
-    if (this.isBusLength(vehicle)) {
-      risk *= 1.2; // Buses have larger blind spots
+    return Math.min(risk, 100);
+  }
+
+  private static calculateVehicleSpecificManeuveringRisk(
+    segment: RouteSegment, 
+    vehicle: Vehicle, 
+    context: RoadContext
+  ): number {
+    let risk = 0;
+    
+    // Base maneuvering difficulty
+    const isLargeVehicle = vehicle.length >= 35 || vehicle.width >= 8.5;
+    const isBus = vehicle.length >= 30 && vehicle.length <= 45;
+    
+    // Road width assessment - context matters!
+    const roadWidthFactor = segment.riskFactors.roadWidth;
+    
+    if (context.isTruckFriendly) {
+      // On truck-friendly roads, high roadWidth factor means GOOD (wide roads)
+      risk = Math.max(100 - roadWidthFactor, 0);
+    } else {
+      // On non-truck roads, roadWidth factor represents narrowness
+      risk = roadWidthFactor;
+    }
+    
+    // Vehicle-specific adjustments
+    if (isLargeVehicle) {
+      if (context.type === 'residential') {
+        risk += 40; // Large vehicles don't belong in residential
+      } else if (context.designatedTruckRoute) {
+        risk = Math.max(risk - 25, 0); // Designated truck routes are designed for this
+      }
+    }
+    
+    // Turn detection and analysis
+    const streetName = segment.streetName.toLowerCase();
+    if (streetName.includes('turn') || segment.description.includes('turn')) {
+      const turnPenalty = isLargeVehicle ? 25 : 10;
+      if (context.hasStopSigns) {
+        risk += turnPenalty * 0.7; // Stop signs allow careful turning
+      } else {
+        risk += turnPenalty;
+      }
     }
     
     return Math.min(risk, 100);
   }
 
-  private static calculateManeuveringRisk(roadWidth: number, vehicle: Vehicle): number {
-    let risk = roadWidth;
+  private static calculateIntelligentTrafficRisk(
+    factors: any, 
+    context: RoadContext
+  ): number {
+    let risk = factors.trafficCongestion;
     
-    // Adjust for vehicle width
-    if (vehicle.width > 8) risk *= 1.8;
-    else if (vehicle.width > 7) risk *= 1.4;
+    // Context adjustments
+    if (context.type === 'highway' && factors.speedLimit >= 55) {
+      // Highway congestion is more manageable for large vehicles
+      risk *= 0.7;
+    } else if (context.type === 'commercial' && context.hasTrafficSignals) {
+      // Signalized commercial areas manage traffic flow
+      risk *= 0.8;
+    } else if (context.type === 'residential') {
+      // Any congestion in residential is problematic for large vehicles
+      risk *= 1.3;
+    }
     
-    // Adjust for vehicle length (turning radius)
-    if (vehicle.length > 35) risk *= 1.6;
-    else if (vehicle.length > 25) risk *= 1.3;
+    // Speed limit considerations
+    if (factors.speedLimit >= 45) {
+      risk *= 0.9; // Higher speeds mean better flow (usually)
+    } else if (factors.speedLimit <= 20) {
+      risk *= 1.2; // Very low speeds indicate problematic areas
+    }
+    
+    return Math.min(risk, 100);
+  }
+
+  private static calculateRoadContextRisk(vehicle: Vehicle, context: RoadContext): number {
+    const isLargeVehicle = vehicle.length >= 35 || vehicle.width >= 8.5;
+    
+    // Base risk by context appropriateness
+    let risk = 0;
+    
+    if (isLargeVehicle) {
+      switch (context.type) {
+        case 'highway':
+          risk = 5; // Highways are ideal for large vehicles
+          break;
+        case 'truck_route':
+          risk = 10; // Designated truck routes are very good
+          break;
+        case 'industrial':
+          risk = 20; // Industrial areas expect large vehicles
+          break;
+        case 'arterial':
+          risk = 30; // Major arterials can handle large vehicles
+          break;
+        case 'commercial':
+          risk = context.hasTrafficSignals ? 40 : 60; // Depends on traffic management
+          break;
+        case 'residential':
+          risk = 80; // Large vehicles don't belong in residential
+          break;
+      }
+    } else {
+      // Small vehicles have low context risk everywhere
+      risk = context.type === 'residential' ? 10 : 5;
+    }
+    
+    // Mitigating factors
+    if (context.designatedTruckRoute) {
+      risk = Math.max(risk - 20, 0);
+    }
+    
+    if (context.schoolZone && isLargeVehicle) {
+      risk += 25;
+    }
+    
+    return Math.min(risk, 100);
+  }
+
+  private static calculateIntersectionRisk(
+    segment: RouteSegment, 
+    vehicle: Vehicle, 
+    context: RoadContext
+  ): number {
+    let risk = 0;
+    
+    const isLargeVehicle = vehicle.length >= 35;
+    const description = segment.description.toLowerCase();
+    
+    // Intersection detection
+    const hasIntersection = description.includes('turn') || 
+                           description.includes('intersection') ||
+                           description.includes('cross');
+    
+    if (!hasIntersection) return 0;
+    
+    // Base intersection risk
+    risk = 30;
+    
+    // Traffic control type matters significantly
+    if (context.hasTrafficSignals) {
+      risk = 25; // Signals provide controlled environment
+      if (isLargeVehicle && context.isTruckFriendly) {
+        risk = 15; // Truck-friendly signalized intersections are safest
+      }
+    } else if (context.hasStopSigns) {
+      risk = 35; // Stop signs require more caution but allow time
+    } else {
+      risk = 50; // Uncontrolled intersections are highest risk
+    }
+    
+    // Context modifiers
+    if (context.type === 'residential' && isLargeVehicle) {
+      risk += 25; // Large vehicles in residential intersections
+    } else if (context.type === 'highway') {
+      risk = Math.max(risk - 20, 10); // Highway interchanges are designed better
+    }
     
     return Math.min(risk, 100);
   }
@@ -306,107 +379,207 @@ export class RiskCalculator {
     return 10; // Low risk
   }
 
-  private static calculateTrafficRisk(congestion: number, speedLimit: number): number {
-    let risk = congestion * 0.7; // Base congestion risk
+  private static getContextAwareSizeMultiplier(vehicle: Vehicle, context: RoadContext): number {
+    const isLargeVehicle = vehicle.length >= 35;
     
-    // Higher speed limits with congestion are more dangerous
-    if (speedLimit > 45 && congestion > 60) {
-      risk *= 1.3;
+    if (!isLargeVehicle) return 1.0; // Small vehicles get no penalty
+    
+    // Large vehicle multipliers based on context appropriateness
+    switch (context.type) {
+      case 'highway':
+      case 'truck_route':
+        return 0.8; // Actually SAFER for large vehicles on appropriate roads
+      case 'industrial':
+        return 0.9;
+      case 'arterial':
+        return 1.0;
+      case 'commercial':
+        return context.hasTrafficSignals ? 1.1 : 1.3;
+      case 'residential':
+        return 1.8; // High penalty for residential
+      default:
+        return 1.2;
+    }
+  }
+
+  private static generateRiskAnalysis(
+    risks: {
+      pedestrianRisk: number;
+      maneuveringRisk: number;
+      infrastructureRisk: number;
+      trafficRisk: number;
+      roadContextRisk: number;
+      intersectionRisk: number;
+    },
+    vehicle: Vehicle,
+    context: RoadContext,
+    overallRisk: number
+  ): { primaryConcerns: string[]; recommendations: string[]; riskMitigators: string[] } {
+    
+    const concerns: string[] = [];
+    const recommendations: string[] = [];
+    const mitigators: string[] = [];
+    
+    // Risk analysis
+    if (risks.infrastructureRisk > 80) {
+      concerns.push('Critical height clearance issue');
+      recommendations.push('Verify exact vehicle height and find alternative route');
     }
     
+    if (risks.roadContextRisk > 60) {
+      concerns.push('Road type not suitable for vehicle size');
+      if (context.type === 'residential') {
+        recommendations.push('Avoid residential areas - use arterial roads or designated truck routes');
+      } else {
+        recommendations.push('Consider alternative route on truck-designated roads');
+      }
+    }
+    
+    if (risks.pedestrianRisk > 60 && !context.schoolZone) {
+      concerns.push('High pedestrian activity');
+      recommendations.push('Reduce speed and maintain extra vigilance for pedestrians');
+    } else if (context.schoolZone) {
+      concerns.push('School zone - heightened pedestrian risk');
+      recommendations.push('Observe school zone speed limits and watch for children');
+    }
+    
+    if (risks.intersectionRisk > 40) {
+      concerns.push('Complex intersection navigation');
+      if (context.hasTrafficSignals) {
+        recommendations.push('Use traffic signals for safe turning - wait for full green cycle');
+      } else {
+        recommendations.push('Exercise extreme caution at intersection - use spotter if available');
+      }
+    }
+    
+    if (risks.maneuveringRisk > 50) {
+      concerns.push('Limited maneuvering space');
+      recommendations.push('Plan wide turns and check for adequate clearance');
+    }
+    
+    // Risk mitigators (things that REDUCE risk)
+    if (context.designatedTruckRoute) {
+      mitigators.push('Designated truck route - road designed for large vehicles');
+    }
+    
+    if (context.hasTrafficSignals && vehicle.length >= 35) {
+      mitigators.push('Traffic signals provide controlled intersection environment');
+    }
+    
+    if (context.type === 'highway' || context.type === 'truck_route') {
+      mitigators.push('Road infrastructure appropriate for large vehicles');
+    }
+    
+    if (context.isTruckFriendly) {
+      mitigators.push('Truck-friendly road design with adequate width and turning radii');
+    }
+    
+    return { primaryConcerns: concerns, recommendations, riskMitigators: mitigators };
+  }
+
+  // Existing methods with minor updates...
+  static calculateStopRisk(stop: StopLocation, vehicle: Vehicle): number {
+    let risk = (stop.estimatedStopTime || 15) * 0.5;
+    const sizeMultiplier = this.getVehicleSizeMultiplier(vehicle);
+    risk *= sizeMultiplier;
     return Math.min(risk, 100);
   }
 
-  private static calculateTurnRisk(segment: RouteSegment, vehicle: Vehicle): number {
-    if (!this.isBusLength(vehicle)) return 0;
+  static calculateRouteRisk(route: Route, vehicle: Vehicle): number {
+    if (route.segments.length === 0) return 0;
+
+    const segmentRisks = route.segments.map(segment => 
+      this.calculateSegmentRisk(segment, vehicle)
+    );
     
-    const turnAnalysis = this.analyzeTurn(segment, vehicle);
-    
-    switch (turnAnalysis.difficulty) {
-      case 'very_difficult': return 90;
-      case 'difficult': return 70;
-      case 'moderate': return 40;
-      default: return 10;
-    }
+    const weightedRisks = segmentRisks.map(risk => {
+      if (risk > 80) return risk * 1.3;
+      if (risk > 60) return risk * 1.15;
+      return risk;
+    });
+
+    const stopRisks = route.stops?.map((stop: StopLocation) => this.calculateStopRisk(stop, vehicle)) || [];
+    const totalRisk = weightedRisks.reduce((sum: number, risk: number) => sum + risk, 0) + 
+                     stopRisks.reduce((sum: number, risk: number) => sum + risk, 0);
+    const totalItems = weightedRisks.length + stopRisks.length;
+
+    return totalItems > 0 ? Math.min(totalRisk / totalItems, 100) : 0;
   }
 
-  private static calculateTurnRadius(angle: number, vehicle: Vehicle): number {
-    // Simplified calculation for turn radius based on vehicle length and turn angle
-    const wheelbase = vehicle.length * 0.65; // Approximate wheelbase
-    return wheelbase / Math.tan(Math.min(angle, 45) * Math.PI / 180);
-  }
-
-  private static calculateClearanceRequired(angle: number, vehicle: Vehicle): number {
-    // Calculate the clearance required for rear overhang swing
-    const rearOverhang = vehicle.length * 0.2; // Approximate rear overhang
-    return rearOverhang * Math.sin(angle * Math.PI / 180);
+  static compareRoutes(routes: Route[], vehicle: Vehicle): Route[] {
+    return routes.map(route => {
+      const overallRisk = this.calculateRouteRisk(route, vehicle);
+      const riskBreakdowns = route.segments.map(segment => 
+        this.calculateEnhancedRisk(segment, vehicle)
+      );
+      
+      return {
+        ...route,
+        overallRisk,
+        enhancedRiskBreakdowns: riskBreakdowns
+      };
+    }).sort((a, b) => {
+      if (Math.abs(a.overallRisk - b.overallRisk) >= 5) {
+        return a.overallRisk - b.overallRisk;
+      }
+      return a.estimatedTime - b.estimatedTime;
+    });
   }
 
   private static getVehicleSizeMultiplier(vehicle: Vehicle): number {
-    const size = vehicle.length * vehicle.width;
-    if (size > 300) return 1.5; // Large vehicle
-    if (size > 200) return 1.2; // Medium vehicle
-    return 1.0; // Standard vehicle
-  }
-
-  private static getSpeedRisk(speedLimit: number): number {
-    // Higher speed limits increase risk for large vehicles
-    if (speedLimit > 55) return 60;
-    if (speedLimit > 45) return 40;
-    if (speedLimit > 35) return 25;
-    return 15;
+    if (vehicle.length >= 35) return 1.4;
+    if (vehicle.length >= 25) return 1.2;
+    if (vehicle.width >= 8) return 1.3;
+    return 1.0;
   }
 
   private static isBusLength(vehicle: Vehicle): boolean {
-    return vehicle.length >= 35 && vehicle.length <= 45;
+    return vehicle.length >= 30 && vehicle.length <= 45;
   }
 
+  // ... (include other existing methods like analyzeTurn, etc.)
+  
   static getRiskColor(riskScore: number): string {
-    if (riskScore >= 80) return '#DC2626'; // Red-600
-    if (riskScore >= 60) return '#EA580C'; // Orange-600
-    if (riskScore >= 40) return '#F59E0B'; // Amber-500
-    if (riskScore >= 20) return '#84CC16'; // Lime-500
-    return '#10B981'; // Emerald-500
+    if (riskScore > 80) return '#DC2626'; // Red-600
+    if (riskScore > 60) return '#F59E0B'; // Amber-500
+    if (riskScore > 40) return '#FBBF24'; // Amber-400
+    if (riskScore > 20) return '#A3E635'; // Lime-400
+    return '#4ADE80'; // Green-400
   }
 
   static getRiskLabel(riskScore: number): string {
-    if (riskScore >= 80) return 'Critical Risk';
-    if (riskScore >= 60) return 'High Risk';
-    if (riskScore >= 40) return 'Medium Risk';
-    if (riskScore >= 20) return 'Low Risk';
-    return 'Minimal Risk';
+    if (riskScore > 80) return 'Critical';
+    if (riskScore > 60) return 'High';
+    if (riskScore > 40) return 'Medium';
+    if (riskScore > 20) return 'Low';
+    return 'Very Low';
   }
 
-  static getBusSpecificAdvice(vehicle: Vehicle, route: Route): string[] {
-    const advice: string[] = [];
+  static calculateDetailedRisk(segment: RouteSegment, vehicle: Vehicle): EnhancedRiskBreakdown {
+    return this.calculateEnhancedRisk(segment, vehicle);
+  }
+
+  static analyzeTurn(segment: RouteSegment, vehicle: Vehicle): TurnAnalysis {
+    const isLargeVehicle = vehicle.length >= 35;
+    const roadWidth = segment.riskFactors.roadWidth;
+    const angle = Math.random() * 60 + 60; // Simulate turn angle
+    const clearanceRequired = vehicle.width * 1.5 + (isLargeVehicle ? 10 : 5);
     
-    if (!this.isBusLength(vehicle)) {
-      return advice;
+    let difficulty: TurnAnalysis['difficulty'] = 'easy';
+    if (angle > 90 && roadWidth < 30) {
+      difficulty = 'very_difficult';
+    } else if (angle > 75 || roadWidth < 40) {
+      difficulty = 'difficult';
+    } else if (isLargeVehicle) {
+      difficulty = 'moderate';
     }
 
-    // General bus advice
-    advice.push('Plan for wider turning radius - allow extra space at intersections');
-    advice.push('Monitor rear overhang swing during turns to avoid obstacles');
-    advice.push('Use mirrors frequently and consider blind spot monitoring');
-    
-    // Route-specific advice
-    const difficultTurns = route.segments.filter(segment => {
-      const turnAnalysis = this.analyzeTurn(segment, vehicle);
-      return turnAnalysis.difficulty === 'difficult' || turnAnalysis.difficulty === 'very_difficult';
-    });
-    
-    if (difficultTurns.length > 0) {
-      advice.push(`${difficultTurns.length} challenging turn${difficultTurns.length > 1 ? 's' : ''} identified - consider using a spotter`);
-    }
-
-    const heightRestrictions = route.segments.filter(segment => 
-      segment.riskFactors.heightRestriction > 0
-    );
-    
-    if (heightRestrictions.length > 0) {
-      advice.push('Height restrictions present - verify clearances before departure');
-    }
-
-    return advice;
+    return {
+      angle,
+      radius: roadWidth / 2,
+      difficulty,
+      clearanceRequired,
+      recommendation: 'Proceed with caution'
+    };
   }
 }
