@@ -16,12 +16,12 @@ function App() {
   
   const [vehicle, setVehicle] = useState<Vehicle>({
     height: 11.0,
-    length: 24.0,
+    length: 40.0,
     width: 8.0
   });
 
-  const [routes, setRoutes] = useState<Route[]>(mockRoutes);
-  const [selectedRouteId, setSelectedRouteId] = useState(mockRoutes[0].id);
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [selectedRouteId, setSelectedRouteId] = useState('');
   const [currentView, setCurrentView] = useState<'overview' | 'details'>('overview');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [useRealData, setUseRealData] = useState(false);
@@ -32,7 +32,7 @@ function App() {
   const [lastAnalyzedDestination, setLastAnalyzedDestination] = useState('');
   const [stops, setStops] = useState<StopLocation[]>([]);
 
-  const selectedRoute = routes.find(route => route.id === selectedRouteId) || routes[0];
+  const selectedRoute = routes.find(route => route.id === selectedRouteId);
 
   // Check if Google Maps API key is available
   useEffect(() => {
@@ -156,7 +156,7 @@ function App() {
         )}
 
         {/* Success Banner - Show when routes have been analyzed */}
-        {useRealData && lastAnalyzedOrigin && lastAnalyzedDestination && routes.length > 0 && routes !== mockRoutes && (
+        {useRealData && lastAnalyzedOrigin && lastAnalyzedDestination && routes.length > 0 && (
           <div className="mb-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4 transition-colors duration-300">
             <div className="flex items-center gap-2">
               <Shield className="w-5 h-5 text-green-600 dark:text-green-400" />
@@ -198,11 +198,17 @@ function App() {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             {/* Main Content - Route Map */}
             <div className="xl:col-span-2">
-              <RouteMap 
-                route={selectedRoute} 
-                vehicle={vehicle}
-                useGoogleMaps={useRealData}
-              />
+              {selectedRoute ? (
+                <RouteMap 
+                  route={selectedRoute} 
+                  vehicle={vehicle}
+                  useGoogleMaps={useRealData}
+                />
+              ) : (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-96 flex items-center justify-center">
+                  <p className="text-gray-500 dark:text-gray-400">Enter origin and destination to analyze a route.</p>
+                </div>
+              )}
             </div>
 
             {/* Side Panel - Critical Points */}

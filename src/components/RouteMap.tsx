@@ -5,17 +5,26 @@ import { RiskCalculator } from '../utils/riskCalculator';
 import { GoogleMapComponent } from './GoogleMapComponent';
 
 interface RouteMapProps {
-  route: Route;
+  route?: Route; // Make route optional
   vehicle: Vehicle;
   useGoogleMaps?: boolean;
 }
 
-export const RouteMap: React.FC<RouteMapProps> = ({ 
-  route, 
-  vehicle, 
-  useGoogleMaps = true 
+export const RouteMap: React.FC<RouteMapProps> = ({
+  route,
+  vehicle,
+  useGoogleMaps = true
 }) => {
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
+
+  // If no route is provided, render a placeholder
+  if (!route) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-96 flex items-center justify-center">
+        <p className="text-gray-500 dark:text-gray-400">No route selected. Enter origin and destination to analyze a route.</p>
+      </div>
+    );
+  }
   
   const segmentsWithRisk = route.segments.map(segment => ({
     ...segment,
