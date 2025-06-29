@@ -313,7 +313,7 @@ export class RouteAnalysisService {
           startLocation.lng()
         );
 
-        // Extract street name from instructions
+        // Extract enhanced street name
         const streetName = this.extractStreetName(step.instructions);
         
         // Enhanced risk factor calculation
@@ -333,10 +333,15 @@ export class RouteAnalysisService {
 
         segments.push(segment);
         segmentCounter++;
+        
+        // Add a small delay every 10 requests to avoid rate limiting
+        if (segmentCounter % 10 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
     }
 
-    console.log(`Created ${segments.length} total segments`);
+    console.log(`Created ${segments.length} total segments with enhanced descriptions`);
     return segments;
   }
 
@@ -397,30 +402,58 @@ export class RouteAnalysisService {
     return baseFactors;
   }
 
-  private extractStreetName(instructions: string): string {
-    // Remove HTML tags and extract street name
-    const cleanInstructions = instructions.replace(/<[^>]*>/g, '');
-    
-    // Common patterns to extract street names
-    const patterns = [
-      /on (.+?)(?:\s|$)/i,
-      /onto (.+?)(?:\s|$)/i,
-      /via (.+?)(?:\s|$)/i,
-      /toward (.+?)(?:\s|$)/i,
-      /continue on (.+?)(?:\s|$)/i
-    ];
+private extractStreetName(instructions: string): string {
+  // Remove HTML tags first
+  const cleanInstructions = instructions.replace(/<[^>]*>/g, '');
+  
+  // Enhanced patterns to extract street names with better context
+  const patterns = [
+    // "Turn right onto Main Street" -> "Main Street"
+    /(?:turn|continue).*?(?:onto|on)\s+(.+?)(?:\s+(?:toward|for|until|\.|,)|$)/i,
+    // "Head north on Highway 90" -> "Highway 90" 
+    /head\s+\w+\s+on\s+(.+?)(?:\s+(?:toward|for|until|\.|,)|$)/i,
+    // "Take the ramp onto I-10 W" -> "I-10 W"
+    /take.*?(?:ramp|exit).*?(?:onto|toward)\s+(.+?)(?:\s+(?:toward|for|until|\.|,)|$)/i,
+    // "Continue on I-49 S" -> "I-49 S"
+    /continue\s+on\s+(.+?)(?:\s+(?:toward|for|until|\.|,)|$)/i,
+    // "Merge onto US-167 N" -> "US-167 N"
+    /merge\s+onto\s+(.+?)(?:\s+(?:toward|for|until|\.|,)|$)/i,
+    // "Keep right to stay on I-10" -> "I-10"
+    /keep.*?(?:stay\s+on|on)\s+(.+?)(?:\s+(?:toward|for|until|\.|,)|$)/i,
+    // General fallback patterns
+    /(?:on|onto|via|toward)\s+(.+?)(?:\s+(?:toward|for|until|\.|,)|$)/i,
+  ];
 
-    for (const pattern of patterns) {
-      const match = cleanInstructions.match(pattern);
-      if (match && match[1]) {
-        return match[1].trim();
+  for (const pattern of patterns) {
+    const match = cleanInstructions.match(pattern);
+    if (match && match[1]) {
+      let streetName = match[1].trim();
+      
+      // Clean up common suffixes that aren't part of the street name
+      streetName = streetName.replace(/\s+(?:toward|for|until|in|at).*$/i, '');
+      
+      // Clean up extra whitespace
+      streetName = streetName.replace(/\s+/g, ' ').trim();
+      
+      // If we got a reasonable street name, return it
+      if (streetName.length > 1 && streetName.length < 50) {
+        return this.formatStreetName(streetName);
       }
     }
-
-    // Fallback: use first few words of instructions
-    const words = cleanInstructions.split(' ').slice(0, 3);
-    return words.join(' ') || 'Unknown Street';
   }
+
+  // Last resort: try to extract something meaningful from the instructions
+  const meaningfulWords = cleanInstructions
+    .split(' ')
+    .filter(word => 
+      word.length > 2 && 
+      !['the', 'and', 'turn', 'head', 'continue', 'toward', 'then', 'take'].includes(word.toLowerCase())
+    )
+    .slice(0, 3)
+    .join(' ');
+
+  return meaningfulWords || 'Local Street';
+}
 
   private estimateTrafficCongestion(step: google.maps.DirectionsStep): number {
     // Estimate traffic based on duration vs distance
@@ -437,46 +470,138 @@ export class RouteAnalysisService {
     return 15;
   }
 
-  private generateEnhancedSegmentDescription(
-    step: google.maps.DirectionsStep,
-    roadData: RoadData,
-    riskFactors: any,
-    vehicle: Vehicle
-  ): string {
-    const factors = [];
-    const instructions = step.instructions.toLowerCase();
-    
-    // Analyze turn complexity for buses
-    if (vehicle.length >= 35 && (instructions.includes('turn') || instructions.includes('onto'))) {
-      if (instructions.includes('sharp') || riskFactors.roadWidth > 70) {
-        factors.push('challenging turn for large vehicle');
-      } else {
-        factors.push('moderate turn');
-      }
-    }
-    
-    if (riskFactors.pedestrianTraffic > 70) {
-      factors.push('heavy pedestrian activity');
-    }
-    
-    if (riskFactors.roadWidth > 60) {
-      factors.push('narrow road conditions');
-    }
-    
-    if (riskFactors.trafficCongestion > 70) {
-      factors.push('heavy traffic congestion');
-    }
-    
-    if (roadData.heightRestrictions && roadData.heightRestrictions > 0) {
-      factors.push(`${roadData.heightRestrictions}ft height limit`);
-    }
+private formatStreetName(streetName: string): string {
+  // Handle common abbreviations and formatting
+  return streetName
+    .replace(/\bSt\b/g, 'Street')
+    .replace(/\bAve\b/g, 'Avenue') 
+    .replace(/\bBlvd\b/g, 'Boulevard')
+    .replace(/\bRd\b/g, 'Road')
+    .replace(/\bDr\b/g, 'Drive')
+    .replace(/\bHwy\b/g, 'Highway')
+    .replace(/\bI-(\d+)/g, 'Interstate $1')
+    .replace(/\bUS-(\d+)/g, 'US Highway $1')
+    .replace(/\bLA-(\d+)/g, 'Louisiana Highway $1')
+    .trim();
+}
 
-    if (factors.length === 0) {
-      return 'Standard road conditions';
-    }
+private generateEnhancedSegmentDescription(
+  step: google.maps.DirectionsStep,
+  roadData: RoadData,
+  riskFactors: any,
+  vehicle: Vehicle
+): string {
+  const descriptions = [];
+  const instructions = step.instructions.toLowerCase();
+  const distance = step.distance?.value || 0;
+  const duration = step.duration?.value || 0;
+  const distanceMiles = Math.round((distance / 1609.34) * 10) / 10; // Round to 1 decimal
 
-    return factors.join(', ');
+  // Movement type description
+  let movementType = '';
+  if (instructions.includes('turn left')) {
+    movementType = riskFactors.roadWidth > 60 ? 'Sharp left turn' : 'Left turn';
+  } else if (instructions.includes('turn right')) {
+    movementType = riskFactors.roadWidth > 60 ? 'Sharp right turn' : 'Right turn';
+  } else if (instructions.includes('continue') || instructions.includes('head')) {
+    movementType = 'Continue straight';
+  } else if (instructions.includes('merge')) {
+    movementType = 'Merge into traffic';
+  } else if (instructions.includes('exit') || instructions.includes('ramp')) {
+    movementType = 'Take exit/ramp';
+  } else if (instructions.includes('roundabout')) {
+    movementType = 'Navigate roundabout';
+  } else {
+    movementType = 'Proceed';
   }
+
+  // Add distance info for longer segments
+  if (distanceMiles >= 0.5) {
+    movementType += ` for ${distanceMiles} mile${distanceMiles !== 1 ? 's' : ''}`;
+  }
+
+  descriptions.push(movementType);
+
+  // Road type context
+  if (instructions.includes('highway') || instructions.includes('interstate') || instructions.includes('freeway')) {
+    descriptions.push('highway conditions');
+  } else if (instructions.includes('residential') || riskFactors.pedestrianTraffic > 50) {
+    descriptions.push('residential area');
+  } else if (instructions.includes('downtown') || instructions.includes('business')) {
+    descriptions.push('commercial district');
+  }
+
+  // Traffic and congestion info
+  const avgSpeed = distanceMiles / (duration / 3600); // mph
+  if (riskFactors.trafficCongestion > 75 || avgSpeed < 15) {
+    descriptions.push('heavy traffic expected');
+  } else if (riskFactors.trafficCongestion > 50 || avgSpeed < 25) {
+    descriptions.push('moderate traffic');
+  } else if (avgSpeed > 45) {
+    descriptions.push('free-flowing traffic');
+  }
+
+  // Vehicle-specific concerns
+  if (vehicle.length >= 35) { // Large vehicle
+    if (instructions.includes('turn') && riskFactors.roadWidth > 60) {
+      descriptions.push('⚠️ tight turn for large vehicle');
+    }
+    if (instructions.includes('roundabout')) {
+      descriptions.push('⚠️ large vehicle roundabout navigation');
+    }
+  }
+
+  // Pedestrian activity
+  if (riskFactors.pedestrianTraffic > 70) {
+    descriptions.push('⚠️ high pedestrian activity');
+  } else if (riskFactors.pedestrianTraffic > 40) {
+    descriptions.push('moderate pedestrian activity');
+  }
+
+  // Road width concerns
+  if (riskFactors.roadWidth > 70) {
+    descriptions.push('⚠️ narrow road conditions');
+  } else if (riskFactors.roadWidth > 50) {
+    descriptions.push('somewhat narrow road');
+  }
+
+  // Height restrictions
+  if (roadData.heightRestrictions && roadData.heightRestrictions > 0) {
+    const clearance = roadData.heightRestrictions;
+    if (clearance <= vehicle.height + 1) {
+      descriptions.push(`🚨 CRITICAL: ${clearance}ft height limit (vehicle: ${vehicle.height}ft)`);
+    } else if (clearance <= vehicle.height + 2) {
+      descriptions.push(`⚠️ Low clearance: ${clearance}ft height limit`);
+    } else {
+      descriptions.push(`Height limit: ${clearance}ft`);
+    }
+  }
+
+  // Speed considerations
+  if (riskFactors.speedLimit <= 25) {
+    descriptions.push('low speed zone');
+  } else if (riskFactors.speedLimit >= 55) {
+    descriptions.push('high speed zone');
+  }
+
+  // Special area detection
+  if (instructions.includes('school')) {
+    descriptions.push('⚠️ school zone - reduced speed');
+  }
+  if (instructions.includes('construction')) {
+    descriptions.push('⚠️ construction zone');
+  }
+  if (instructions.includes('bridge')) {
+    descriptions.push('bridge crossing');
+  }
+
+  // Default fallback
+  if (descriptions.length === 1 && descriptions[0] === movementType) {
+    descriptions.push('standard road conditions');
+  }
+
+  return descriptions.join(' • ');
+}
 
   private identifyCriticalPoints(segments: RouteSegment[], vehicle: Vehicle): CriticalPoint[] {
     const criticalPoints: CriticalPoint[] = [];
