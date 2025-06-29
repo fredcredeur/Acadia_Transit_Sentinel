@@ -6,7 +6,6 @@ import { RouteComparison } from './components/RouteComparison';
 import { CriticalPoints } from './components/CriticalPoints';
 import { RouteInput } from './components/RouteInput';
 import { DarkModeToggle } from './components/DarkModeToggle';
-import { SavedLocationsDebug } from './components/SavedLocationsDebug';
 import { Vehicle, Route, StopLocation } from './types';
 import { mockRoutes } from './data/mockRoutes';
 import { RouteAnalysisService } from './services/routeAnalysisService';
@@ -203,9 +202,6 @@ function App() {
                 selectedRoute={selectedRouteId}
                 onRouteSelect={setSelectedRouteId}
               />
-              <div className="mt-8">
-                <SavedLocationsDebug />
-              </div>
             </div>
           </div>
         ) : (

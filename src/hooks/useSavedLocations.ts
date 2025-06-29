@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { SavedLocation } from '../types';
+import { useToast } from './useToast';
 
 const STORAGE_KEY = 'acadia-saved-locations';
 
@@ -7,6 +8,7 @@ export const useSavedLocations = () => {
   const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   // Load saved locations from localStorage on mount
   useEffect(() => {
@@ -39,28 +41,55 @@ export const useSavedLocations = () => {
     }
   }, [savedLocations]);
 
-  const addLocation = (location: Omit<SavedLocation, 'id' | 'createdAt'>) => {
+  const addLocation = useCallback((location: Omit<SavedLocation, 'id' | 'createdAt'>) => {
+    console.log('➕ Adding new location:', location.name);
+    
     const newLocation: SavedLocation = {
       ...location,
       id: `loc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       createdAt: new Date(),
     };
 
-    setSavedLocations(prev => [newLocation, ...prev]);
+    setSavedLocations(prev => {
+      const updated = [newLocation, ...prev];
+      console.log(`📊 Total locations after add: ${updated.length}`);
+      return updated;
+    });
+    
     return newLocation;
-  };
+  }, []);
 
-  const updateLocation = (id: string, updates: Partial<SavedLocation>) => {
-    setSavedLocations(prev =>
-      prev.map(loc =>
-        loc.id === id ? { ...loc, ...updates } : loc
-      )
-    );
-  };
+  const updateLocation = useCallback((id: string, updates: Partial<SavedLocation>) => {
+    const locationToUpdate = savedLocations.find(loc => loc.id === id);
+    
+    if (locationToUpdate) {
+      console.log('📝 Updating location:', id, updates);
+      
+      setSavedLocations(prev =>
+        prev.map(loc =>
+          loc.id === id ? { ...loc, ...updates } : loc
+        )
+      );
+      
+      showToast(`"${locationToUpdate.name}" updated`, 'success', 'edit');
+    }
+  }, [savedLocations, showToast]);
 
-  const deleteLocation = (id: string) => {
-    setSavedLocations(prev => prev.filter(loc => loc.id !== id));
-  };
+  const deleteLocation = useCallback((id: string) => {
+    const locationToDelete = savedLocations.find(loc => loc.id === id);
+    
+    if (locationToDelete) {
+      console.log('🗑️ Deleting location:', id);
+      
+      setSavedLocations(prev => {
+        const updated = prev.filter(loc => loc.id !== id);
+        console.log(`📊 Total locations after delete: ${updated.length}`);
+        return updated;
+      });
+      
+      showToast(`"${locationToDelete.name}" deleted`, 'info', 'delete');
+    }
+  }, [savedLocations, showToast]);
 
   const markAsUsed = (id: string) => {
     updateLocation(id, { lastUsed: new Date() });

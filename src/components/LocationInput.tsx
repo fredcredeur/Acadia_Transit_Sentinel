@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MapPin, Navigation, Crosshair, Star, Plus, Search, X, Home, Building, Warehouse, Truck, Clock } from 'lucide-react';
 import { SavedLocation, LocationSuggestion } from '../types';
 import { useSavedLocations } from '../hooks/useSavedLocations';
+import { useToast } from '../hooks/useToast';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { PlacesService, PlacePrediction } from '../services/placesService';
 import { GoogleMapsService } from '../services/googleMapsService';
@@ -28,6 +29,8 @@ export const LocationInput: React.FC<LocationInputProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const { showToast } = useToast();
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [newLocationName, setNewLocationName] = useState('');
   const [newLocationCategory, setNewLocationCategory] = useState<SavedLocation['category']>('other');
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,7 +42,7 @@ export const LocationInput: React.FC<LocationInputProps> = ({
   
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const debounceTimeoutRef = useRef<NodeJS.Timeout>();
+  const debounceTimeoutRef = useRef<number>();
   
   const { savedLocations, addLocation, markAsUsed, searchLocations } = useSavedLocations();
   const { coordinates, isLoading: isGettingLocation, error: locationError, getCurrentLocation } = useGeolocation();
@@ -190,15 +193,37 @@ export const LocationInput: React.FC<LocationInputProps> = ({
   };
 
   const handleSaveLocation = () => {
-    if (newLocationName.trim() && value.trim()) {
-      addLocation({
+    if (!newLocationName.trim()) {
+      showToast('Please enter a location name', 'error');
+      return;
+    }
+    
+    if (!value.trim()) {
+      showToast('Please enter an address', 'error');
+      return;
+    }
+
+    try {
+      const newLocation = addLocation({
         name: newLocationName.trim(),
         address: value.trim(),
         category: newLocationCategory,
       });
+      
+      // Success feedback
+      setSaveSuccess(true);
+      showToast(`"${newLocation.name}" saved successfully!`, 'success', 'save');
+      
+      // Reset form
       setShowSaveDialog(false);
       setNewLocationName('');
       setNewLocationCategory('other');
+      
+      // Clear success state after animation
+      setTimeout(() => setSaveSuccess(false), 2000);
+      
+    } catch (error) {
+      showToast('Failed to save location. Please try again.', 'error');
     }
   };
 
@@ -258,10 +283,16 @@ export const LocationInput: React.FC<LocationInputProps> = ({
             <button
               type="button"
               onClick={() => setShowSaveDialog(true)}
-              className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              className={`
+                p-1 transition-all duration-300 transform
+                ${saveSuccess 
+                  ? 'text-green-500 scale-110 animate-pulse' 
+                  : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:scale-110'
+                }
+              `}
               title="Save this location"
             >
-              <Star className="w-4 h-4" />
+              <Star className={`w-4 h-4 transition-all duration-300 ${saveSuccess ? 'fill-current' : ''}`} />
             </button>
           )}
           
@@ -412,78 +443,85 @@ export const LocationInput: React.FC<LocationInputProps> = ({
 
       {/* Save location dialog */}
       {showSaveDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Save Location</h3>
-              <button
-                onClick={() => setShowSaveDialog(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6 transform animate-slideUp">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg">
+            <Star className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Save Location</h3>
+        </div>
+        <button
+          onClick={() => setShowSaveDialog(false)}
+          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Location Name
-                </label>
-                <input
-                  type="text"
-                  value={newLocationName}
-                  onChange={(e) => setNewLocationName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  placeholder="e.g., Main Warehouse, Home Office"
-                />
-              </div>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Location Name *
+          </label>
+          <input
+            type="text"
+            value={newLocationName}
+            onChange={(e) => setNewLocationName(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-all duration-200"
+            placeholder="e.g., Main Warehouse, Home Office"
+            autoFocus
+          />
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Category
-                </label>
-                <select
-                  value={newLocationCategory}
-                  onChange={(e) => setNewLocationCategory(e.target.value as SavedLocation['category'])}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                >
-                  <option value="home">Home</option>
-                  <option value="work">Work</option>
-                  <option value="warehouse">Warehouse</option>
-                  <option value="depot">Depot</option>
-                  <option value="customer">Customer</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Category
+          </label>
+          <select
+            value={newLocationCategory}
+            onChange={(e) => setNewLocationCategory(e.target.value as SavedLocation['category'])}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-all duration-200"
+          >
+            <option value="home">🏠 Home</option>
+            <option value="work">🏢 Work</option>
+            <option value="warehouse">🏭 Warehouse</option>
+            <option value="depot">🚛 Depot</option>
+            <option value="customer">👥 Customer</option>
+            <option value="other">📍 Other</option>
+          </select>
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Address
-                </label>
-                <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-sm text-gray-600 dark:text-gray-400">
-                  {value}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowSaveDialog(false)}
-                className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveLocation}
-                disabled={!newLocationName.trim()}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Save Location
-              </button>
-            </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Address
+          </label>
+          <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-sm text-gray-600 dark:text-gray-400">
+            {value || 'No address entered'}
           </div>
         </div>
-      )}
+      </div>
+
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={() => setShowSaveDialog(false)}
+          className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-all duration-200 transform hover:scale-105"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSaveLocation}
+          disabled={!newLocationName.trim() || !value.trim()}
+          className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transform hover:scale-105 disabled:hover:scale-100"
+        >
+          <Star className="w-4 h-4" />
+          Save Location
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 };
