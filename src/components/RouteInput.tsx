@@ -11,17 +11,20 @@ interface RouteInputProps {
   isLoading?: boolean;
   initialOrigin?: string;
   initialDestination?: string;
+  stops: StopLocation[];
+  onStopsChange: (stops: StopLocation[]) => void;
 }
 
-export const RouteInput: React.FC<RouteInputProps> = ({ 
-  onRouteRequest, 
+export const RouteInput: React.FC<RouteInputProps> = ({
+  onRouteRequest,
   isLoading = false,
   initialOrigin = '',
-  initialDestination = ''
+  initialDestination = '',
+  stops,
+  onStopsChange,
 }) => {
   const [origin, setOrigin] = useState(initialOrigin);
   const [destination, setDestination] = useState(initialDestination);
-  const [stops, setStops] = useState<StopLocation[]>([]);
   const [showSavedLocations, setShowSavedLocations] = useState(false);
   const [locationInputTarget, setLocationInputTarget] = useState<'origin' | 'destination' | null>(null);
   const [validationErrors, setValidationErrors] = useState<{origin?: string; destination?: string; stops?: string}>({});
@@ -172,7 +175,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   };
 
   const handleStopsChange = (newStops: StopLocation[]) => {
-    setStops(newStops);
+    onStopsChange(newStops);
     if (validationErrors.stops) {
       setValidationErrors(prev => ({ ...prev, stops: undefined }));
     }

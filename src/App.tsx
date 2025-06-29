@@ -30,7 +30,7 @@ function App() {
   // Store the last analyzed addresses and stops
   const [lastAnalyzedOrigin, setLastAnalyzedOrigin] = useState('');
   const [lastAnalyzedDestination, setLastAnalyzedDestination] = useState('');
-  const [lastAnalyzedStops, setLastAnalyzedStops] = useState<StopLocation[]>([]);
+  const [stops, setStops] = useState<StopLocation[]>([]);
 
   const selectedRoute = routes.find(route => route.id === selectedRouteId) || routes[0];
 
@@ -43,6 +43,13 @@ function App() {
       setError('Google Maps API key not configured. Using demo data.');
     }
   }, []);
+
+  const handleStopsChange = (newStops: StopLocation[]) => {
+    setStops(newStops);
+    if (lastAnalyzedOrigin && lastAnalyzedDestination) {
+      handleRouteAnalysis(lastAnalyzedOrigin, lastAnalyzedDestination, newStops);
+    }
+  };
 
   const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[]) => {
     if (!useRealData) {
@@ -71,7 +78,6 @@ function App() {
       // Store the successfully analyzed addresses and stops
       setLastAnalyzedOrigin(origin);
       setLastAnalyzedDestination(destination);
-      setLastAnalyzedStops(stops || []);
     } catch (err) {
       console.error('Route analysis failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to analyze routes. Please try again.');
@@ -84,8 +90,8 @@ function App() {
     if (!lastAnalyzedOrigin || !lastAnalyzedDestination) return '';
     
     let text = `${lastAnalyzedOrigin} → ${lastAnalyzedDestination}`;
-    if (lastAnalyzedStops.length > 0) {
-      text += ` (${lastAnalyzedStops.length} stop${lastAnalyzedStops.length > 1 ? 's' : ''})`;
+    if (stops.length > 0) {
+      text += ` (${stops.length} stop${stops.length > 1 ? 's' : ''})`;
     }
     return text;
   };
@@ -172,6 +178,8 @@ function App() {
                   isLoading={isAnalyzing}
                   initialOrigin={lastAnalyzedOrigin}
                   initialDestination={lastAnalyzedDestination}
+                  stops={stops}
+                  onStopsChange={handleStopsChange}
                 />
               )}
             </div>
