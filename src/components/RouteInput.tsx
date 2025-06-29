@@ -118,6 +118,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
     e.preventDefault();
     
     console.log('Form submitted with:', { origin, destination, stops: stops.length, apiStatus });
+    console.log('Valid stops being passed:', stops.filter(stop => stop.address.trim()));
     
     // Clear previous validation errors
     setValidationErrors({});

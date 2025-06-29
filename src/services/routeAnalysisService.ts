@@ -112,6 +112,7 @@ export class RouteAnalysisService {
 
       // Prepare waypoints from stops
       const waypoints = request.stops?.map(stop => stop.address) || [];
+      console.log('Prepared waypoints for Google Maps:', waypoints);
 
       // Get routes from Google Maps with enhanced error handling
       const routeResponse = await this.googleMapsService.getRoutes({

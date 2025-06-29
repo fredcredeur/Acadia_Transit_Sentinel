@@ -251,7 +251,7 @@ export class GoogleMapsService {
           region: 'US' // Bias results to US
         };
 
-        console.log('Sending directions request to Google Maps...');
+        console.log('Sending directions request to Google Maps:', directionsRequest);
 
         this.directionsService!.route(directionsRequest, (result, status) => {
           console.log('Directions response status:', status);

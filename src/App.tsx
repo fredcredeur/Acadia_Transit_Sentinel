@@ -48,7 +48,7 @@ function App() {
     setStops(newStops);
   };
 
-  const handleRouteAnalysis = async (origin: string, destination: string) => {
+  const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[]) => {
     if (!useRealData) {
       setError('Google Maps integration requires API key configuration.');
       return;
@@ -59,11 +59,12 @@ function App() {
 
     try {
       const routeAnalysisService = new RouteAnalysisService();
+      const stopsToUse = stops || [];
       const result = await routeAnalysisService.analyzeRoutes({
         origin,
         destination,
         vehicle,
-        stops, // Use the stops state from App.tsx
+        stops: stopsToUse, // Use the parameter
         avoidHighways: false,
         avoidTolls: false
       });
@@ -75,6 +76,7 @@ function App() {
       // Store the successfully analyzed addresses and stops
       setLastAnalyzedOrigin(origin);
       setLastAnalyzedDestination(destination);
+      setStops(stopsToUse); // Update state to match what was analyzed
     } catch (err) {
       console.error('Route analysis failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to analyze routes. Please try again.');
