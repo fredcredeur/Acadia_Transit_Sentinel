@@ -1,68 +1,51 @@
-export interface Vehicle {
-  height: number; // feet
-  length: number; // feet
-  width: number; // feet
+export interface Location {
+  id: string;
+  name: string;
+  address: string;
+  position: {
+    lat: number;
+    lng: number;
+  };
 }
 
-export interface RouteSegment {
-  id: string;
-  startLat: number;
-  startLng: number;
-  endLat: number;
-  endLng: number;
-  streetName: string;
-  riskScore: number;
-  riskFactors: {
-    pedestrianTraffic: number;
-    roadWidth: number;
-    trafficCongestion: number;
-    speedLimit: number;
-    heightRestriction: number;
-  };
-  description: string;
+export interface RoutePoint {
+  location: Location;
+  arrivalTime?: string;
+  departureTime?: string;
+  isStop: boolean;
 }
 
 export interface Route {
   id: string;
   name: string;
-  segments: RouteSegment[];
-  totalDistance: number;
-  estimatedTime: number;
-  overallRisk: number;
-  criticalPoints: CriticalPoint[];
-  waypoints?: string[]; // Added waypoints support
+  description?: string;
+  color?: string;
+  points: RoutePoint[];
+  distance: number; // in meters
+  duration: number; // in seconds
+  riskScore?: number; // 0-100
 }
 
-export interface CriticalPoint {
-  segmentId: string;
-  type: 'turn' | 'intersection' | 'bridge' | 'narrow_road';
-  riskLevel: 'high' | 'critical';
+export interface RiskFactor {
+  id: string;
+  name: string;
   description: string;
-  position: number; // segment index
+  severity: 'low' | 'medium' | 'high';
+  location: {
+    lat: number;
+    lng: number;
+  };
 }
 
-export interface SavedLocation {
-  id: string;
-  name: string;
-  address: string;
-  lat?: number;
-  lng?: number;
-  category: 'home' | 'work' | 'warehouse' | 'depot' | 'customer' | 'other';
-  createdAt: Date;
-  lastUsed?: Date;
-}
-
-export interface LocationSuggestion {
-  id: string;
-  name: string;
-  address: string;
-  category?: string;
-}
-
-export interface StopLocation {
-  id: string;
-  address: string;
-  name?: string;
-  order: number;
-  estimatedStopTime?: number; // minutes
+export interface MapContextType {
+  map: google.maps.Map | null;
+  setMap: (map: google.maps.Map) => void;
+  selectedRoute: Route | null;
+  setSelectedRoute: (route: Route | null) => void;
+  origin: Location | null;
+  setOrigin: (location: Location | null) => void;
+  destination: Location | null;
+  setDestination: (location: Location | null) => void;
+  riskFactors: RiskFactor[];
+  setRiskFactors: (factors: RiskFactor[]) => void;
 }

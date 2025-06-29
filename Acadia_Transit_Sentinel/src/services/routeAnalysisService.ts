@@ -1,535 +1,155 @@
-import { GoogleMapsService, RoadData } from './googleMapsService';
-import { Route, RouteSegment, CriticalPoint, Vehicle, StopLocation } from '../types';
-import { RiskCalculator } from '../utils/riskCalculator';
+import { Route, RiskFactor } from '../types';
 
-export interface RouteAnalysisRequest {
-  origin: string;
-  destination: string;
-  vehicle: Vehicle;
-  stops?: StopLocation[];
-  avoidHighways?: boolean;
-  avoidTolls?: boolean;
-}
-
-export interface RouteAnalysisResult {
-  routes: Route[];
-  recommendedRouteId: string;
-}
-
-export class RouteAnalysisService {
-  private googleMapsService: GoogleMapsService;
-
-  constructor() {
-    this.googleMapsService = GoogleMapsService.getInstance();
+// Mock risk factors in the Acadia area
+const RISK_FACTORS: RiskFactor[] = [
+  {
+    id: 'risk-1',
+    name: 'Steep Road',
+    description: 'Cadillac Mountain Road has steep grades and sharp turns',
+    severity: 'high',
+    location: { lat: 44.3431, lng: -68.2261 }
+  },
+  {
+    id: 'risk-2',
+    name: 'Congestion',
+    description: 'Heavy tourist traffic during peak hours',
+    severity: 'medium',
+    location: { lat: 44.3876, lng: -68.2039 }
+  },
+  {
+    id: 'risk-3',
+    name: 'Wildlife Crossing',
+    description: 'Frequent deer crossings reported in this area',
+    severity: 'medium',
+    location: { lat: 44.3097, lng: -68.1839 }
+  },
+  {
+    id: 'risk-4',
+    name: 'Poor Road Condition',
+    description: 'Road surface damaged from winter weather',
+    severity: 'low',
+    location: { lat: 44.3615, lng: -68.2074 }
+  },
+  {
+    id: 'risk-5',
+    name: 'Blind Corner',
+    description: 'Limited visibility around curve',
+    severity: 'high',
+    location: { lat: 44.3240, lng: -68.2511 }
   }
+];
 
-  public async analyzeRoutes(request: RouteAnalysisRequest): Promise<RouteAnalysisResult> {
-    console.log('Starting route analysis for:', request.origin, '→', request.destination);
-    if (request.stops && request.stops.length > 0) {
-      console.log('With stops:', request.stops.map(s => s.address));
-    }
+// Calculate risk score for a route based on proximity to known risk factors
+export function analyzeRouteRisk(route: Route): { route: Route, riskFactors: RiskFactor[] } {
+  const relevantRiskFactors: RiskFactor[] = [];
+  let totalRiskScore = 0;
+  
+  // Check each point in the route against known risk factors
+  route.points.forEach((point, index) => {
+    if (index === 0) return; // Skip starting point
     
-    try {
-      // Ensure Google Maps is initialized
-      await this.googleMapsService.initialize();
-      console.log('Google Maps service initialized');
-
-      // Test geocoding for origin and destination first
-      let originValid = false;
-      let destinationValid = false;
-      let originResults: google.maps.GeocoderResult[] = [];
-      let destinationResults: google.maps.GeocoderResult[] = [];
-      
-      try {
-        originResults = await this.googleMapsService.geocodeAddress(request.origin);
-        console.log('Origin geocoding results:', originResults.length, 'results found');
-        originValid = originResults.length > 0;
-        
-        if (originResults.length > 0) {
-          const location = originResults[0].geometry.location;
-          console.log('Origin location:', originResults[0].formatted_address, `(${location.lat()}, ${location.lng()})`);
-        }
-      } catch (error) {
-        console.error('Origin geocoding failed:', error);
-        throw new Error(`Origin address not found: "${request.origin}"\n\nPlease try:\n• Adding city and state (e.g., "123 Main St, Lafayette, LA")\n• Using a more specific address\n• Checking for typos`);
-      }
-
-      try {
-        destinationResults = await this.googleMapsService.geocodeAddress(request.destination);
-        console.log('Destination geocoding results:', destinationResults.length, 'results found');
-        destinationValid = destinationResults.length > 0;
-        
-        if (destinationResults.length > 0) {
-          const location = destinationResults[0].geometry.location;
-          console.log('Destination location:', destinationResults[0].formatted_address, `(${location.lat()}, ${location.lng()})`);
-        }
-      } catch (error) {
-        console.error('Destination geocoding failed:', error);
-        throw new Error(`Destination address not found: "${request.destination}"\n\nPlease try:\n• Adding city and state (e.g., "456 Oak Ave, Opelousas, LA")\n• Using a more specific address\n• Checking for typos`);
-      }
-
-      if (!originValid || !destinationValid) {
-        throw new Error('One or both addresses could not be found. Please check your addresses and try again.');
-      }
-
-      // Validate stop locations if provided
-      if (request.stops && request.stops.length > 0) {
-        console.log('Validating stop locations...');
-        for (const stop of request.stops) {
-          try {
-            const stopResults = await this.googleMapsService.geocodeAddress(stop.address);
-            if (stopResults.length === 0) {
-              throw new Error(`Stop location not found: "${stop.address}"`);
-            }
-            console.log('Stop validated:', stopResults[0].formatted_address);
-          } catch (error) {
-            console.error('Stop geocoding failed:', error);
-            throw new Error(`Stop location not found: "${stop.address}"\n\nPlease check the address and try again.`);
-          }
-        }
-      }
-
-      // Check if addresses are in reasonable proximity
-      if (originResults.length > 0 && destinationResults.length > 0) {
-        const originLoc = originResults[0].geometry.location;
-        const destLoc = destinationResults[0].geometry.location;
-        
-        // Calculate distance between the two points
-        const distance = this.calculateDistance(
-          originLoc.lat(), originLoc.lng(),
-          destLoc.lat(), destLoc.lng()
-        );
-        
-        console.log('Distance between addresses:', distance, 'miles');
-        
-        // If distance is very large, warn the user
-        if (distance > 300) {
-          throw new Error(`The addresses appear to be ${Math.round(distance)} miles apart. Please verify:\n• Origin: "${originResults[0].formatted_address}"\n• Destination: "${destinationResults[0].formatted_address}"\n\nIf this is correct, the route analysis will proceed. If not, please check your addresses.`);
-        }
-      }
-
-      console.log('All addresses validated, requesting directions...');
-
-      // Prepare waypoints from stops
-      const waypoints = request.stops?.map(stop => stop.address) || [];
-
-      // Get routes from Google Maps with enhanced error handling
-      const routeResponse = await this.googleMapsService.getRoutes({
-        origin: request.origin,
-        destination: request.destination,
-        waypoints: waypoints.length > 0 ? waypoints : undefined,
-        travelMode: google.maps.TravelMode.DRIVING,
-        avoidHighways: request.avoidHighways,
-        avoidTolls: request.avoidTolls
-      });
-
-      console.log('Google Maps returned', routeResponse.routes.length, 'routes');
-
-      if (!routeResponse.routes || routeResponse.routes.length === 0) {
-        let errorMessage = `No routes found between:\n• From: "${request.origin}"\n• To: "${request.destination}"`;
-        if (waypoints.length > 0) {
-          errorMessage += `\n• Via: ${waypoints.join(', ')}`;
-        }
-        errorMessage += '\n\nPlease verify all locations are accessible by road.';
-        throw new Error(errorMessage);
-      }
-
-      // Convert Google Maps routes to our Route format
-      const routes = await Promise.all(
-        routeResponse.routes.map((googleRoute, index) =>
-          this.convertGoogleRouteToRoute(googleRoute, index, request.vehicle, request.stops)
-        )
+    const prevPoint = route.points[index - 1];
+    
+    // Check each risk factor
+    RISK_FACTORS.forEach(factor => {
+      // Calculate if this route segment passes near the risk factor
+      const isNearRisk = isPointNearLineSegment(
+        factor.location,
+        prevPoint.location.position,
+        point.location.position,
+        0.01 // ~1km threshold
       );
-
-      console.log('Converted', routes.length, 'routes, calculating risk analysis...');
-
-      // Use enhanced route comparison
-      const routesWithAnalysis = RiskCalculator.compareRoutes(routes, request.vehicle);
-      const recommendedRouteId = routesWithAnalysis[0]?.id || '';
-
-      console.log('Route analysis complete, recommended route:', recommendedRouteId);
-
-      return {
-        routes: routesWithAnalysis,
-        recommendedRouteId
-      };
-    } catch (error) {
-      console.error('Route analysis error:', error);
       
-      // Provide more helpful error messages
-      if (error instanceof Error) {
-        if (error.message.includes('NOT_FOUND')) {
-          throw new Error(`Address not found. Please check your addresses:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"\n\nTip: Include city and state for better results.`);
-        } else if (error.message.includes('ZERO_RESULTS')) {
-          throw new Error(`No route found between these locations:\n• From: "${request.origin}"\n• To: "${request.destination}"\n\nPlease verify all locations are accessible by road.`);
-        } else if (error.message.includes('OVER_QUERY_LIMIT')) {
-          throw new Error('Google Maps API limit reached. Please wait a moment and try again.');
-        } else if (error.message.includes('REQUEST_DENIED')) {
-          throw new Error('Google Maps API access denied. Please check your API key configuration.');
-        } else if (error.message.includes('API key')) {
-          throw new Error('Google Maps API key is missing or invalid. Please check your configuration.');
-        }
+      if (isNearRisk) {
+        relevantRiskFactors.push(factor);
         
-        // If it's already a formatted error message, pass it through
-        throw error;
-      }
-      
-      throw new Error('Route analysis failed. Please check your addresses and try again.');
-    }
-  }
-
-  private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-    const R = 3959; // Earth's radius in miles
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  }
-
-  private async convertGoogleRouteToRoute(
-    googleRoute: google.maps.DirectionsRoute,
-    index: number,
-    vehicle: Vehicle,
-    stops?: StopLocation[]
-  ): Promise<Route> {
-    const routeId = `route-${index + 1}`;
-    const routeName = this.generateRouteName(googleRoute, index, stops);
-    
-    console.log(`Converting route ${index + 1}: ${routeName}`);
-    
-    // Extract basic route info - sum all legs for total distance and time
-    const totalDistance = googleRoute.legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
-    const totalDuration = googleRoute.legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
-    
-    const totalDistanceMiles = this.metersToMiles(totalDistance);
-    const estimatedTimeMinutes = Math.round(totalDuration / 60);
-
-    // Add stop time if stops are provided
-    const stopTime = stops ? stops.reduce((sum, stop) => sum + (stop.estimatedStopTime || 0), 0) : 0;
-    const totalTimeWithStops = estimatedTimeMinutes + stopTime;
-
-    console.log(`Route ${index + 1} - Distance: ${totalDistanceMiles}mi, Time: ${estimatedTimeMinutes}min (${totalTimeWithStops}min with stops)`);
-    console.log(`Route ${index + 1} - Start: ${googleRoute.legs[0].start_address}`);
-    console.log(`Route ${index + 1} - End: ${googleRoute.legs[googleRoute.legs.length - 1].end_address}`);
-
-    // Create segments from all route legs
-    const segments = await this.createSegmentsFromLegs(
-      googleRoute.legs,
-      routeId,
-      vehicle
-    );
-
-    console.log(`Created ${segments.length} segments for route ${index + 1}`);
-
-    // Identify critical points with enhanced detection
-    const criticalPoints = this.identifyCriticalPoints(segments, vehicle);
-
-    console.log(`Identified ${criticalPoints.length} critical points for route ${index + 1}`);
-
-    // Prepare waypoints list for the route
-    const waypoints = stops?.map(stop => stop.address) || [];
-
-    return {
-      id: routeId,
-      name: routeName,
-      segments,
-      totalDistance: totalDistanceMiles,
-      estimatedTime: totalTimeWithStops, // Include stop time in total
-      overallRisk: 0, // Will be calculated by RiskCalculator
-      criticalPoints,
-      waypoints: waypoints.length > 0 ? waypoints : undefined
-    };
-  }
-
-  private generateRouteName(googleRoute: google.maps.DirectionsRoute, index: number, stops?: StopLocation[]): string {
-    const summary = googleRoute.summary;
-    
-    // If there are stops, include that in the name
-    if (stops && stops.length > 0) {
-      const stopCount = stops.length;
-      const baseName = summary && summary.trim() ? summary : `Route ${index + 1}`;
-      return `${baseName} (${stopCount} stop${stopCount > 1 ? 's' : ''})`;
-    }
-    
-    if (summary && summary.trim()) {
-      return summary;
-    }
-    
-    // Try to extract main roads from the route
-    if (googleRoute.legs && googleRoute.legs.length > 0) {
-      const allSteps = googleRoute.legs.flatMap(leg => leg.steps || []);
-      if (allSteps.length > 0) {
-        const mainRoads = allSteps
-          .map(step => this.extractStreetName(step.instructions))
-          .filter(name => name && !name.includes('Unknown'))
-          .slice(0, 2);
-        
-        if (mainRoads.length > 0) {
-          return `via ${mainRoads.join(' & ')}`;
+        // Add to risk score based on severity
+        switch (factor.severity) {
+          case 'low':
+            totalRiskScore += 10;
+            break;
+          case 'medium':
+            totalRiskScore += 25;
+            break;
+          case 'high':
+            totalRiskScore += 40;
+            break;
         }
-      }
-    }
-    
-    // Fallback names
-    const names = [
-      'Main Route',
-      'Alternative Route', 
-      'Scenic Route',
-      'Express Route',
-      'Local Route'
-    ];
-    
-    return names[index] || `Route ${index + 1}`;
-  }
-
-  private async createSegmentsFromLegs(
-    legs: google.maps.DirectionsLeg[],
-    routeId: string,
-    vehicle: Vehicle
-  ): Promise<RouteSegment[]> {
-    const segments: RouteSegment[] = [];
-    let segmentCounter = 0;
-
-    console.log(`Processing ${legs.length} legs for route segments`);
-
-    for (const leg of legs) {
-      const steps = leg.steps || [];
-      console.log(`Processing ${steps.length} steps in leg`);
-
-      for (let i = 0; i < steps.length; i++) {
-        const step = steps[i];
-        const startLocation = step.start_location;
-        const endLocation = step.end_location;
-
-        // Get road data for this segment
-        const roadData = await this.googleMapsService.getRoadData(
-          startLocation.lat(),
-          startLocation.lng()
-        );
-
-        // Extract street name from instructions
-        const streetName = this.extractStreetName(step.instructions);
-        
-        // Enhanced risk factor calculation
-        const riskFactors = this.calculateEnhancedRiskFactors(step, roadData, vehicle);
-        
-        const segment: RouteSegment = {
-          id: `${routeId}-seg-${segmentCounter + 1}`,
-          startLat: startLocation.lat(),
-          startLng: startLocation.lng(),
-          endLat: endLocation.lat(),
-          endLng: endLocation.lng(),
-          streetName,
-          riskScore: 0, // Will be calculated by RiskCalculator
-          riskFactors,
-          description: this.generateEnhancedSegmentDescription(step, roadData, riskFactors, vehicle)
-        };
-
-        segments.push(segment);
-        segmentCounter++;
-      }
-    }
-
-    console.log(`Created ${segments.length} total segments`);
-    return segments;
-  }
-
-  private calculateEnhancedRiskFactors(
-    step: google.maps.DirectionsStep,
-    roadData: RoadData,
-    vehicle: Vehicle
-  ) {
-    const baseFactors = {
-      pedestrianTraffic: roadData.pedestrianTraffic || 30,
-      roadWidth: roadData.roadWidth || 40,
-      trafficCongestion: this.estimateTrafficCongestion(step),
-      speedLimit: roadData.speedLimit || 35,
-      heightRestriction: roadData.heightRestrictions || 0
-    };
-
-    // Enhance factors based on step instructions and vehicle type
-    const instructions = step.instructions.toLowerCase();
-    
-    // Detect turns and adjust road width risk
-    if (instructions.includes('turn') || instructions.includes('onto')) {
-      baseFactors.roadWidth += 20; // Turns are more challenging
-      
-      // Sharp turns are especially difficult for buses
-      if ((instructions.includes('sharp') || instructions.includes('right') || instructions.includes('left')) && 
-          vehicle.length >= 35) {
-        baseFactors.roadWidth += 30;
-      }
-    }
-
-    // Detect intersections
-    if (instructions.includes('intersection') || instructions.includes('cross')) {
-      baseFactors.pedestrianTraffic += 25;
-    }
-
-    // Detect highway vs local roads
-    if (instructions.includes('highway') || instructions.includes('freeway') || instructions.includes('interstate')) {
-      baseFactors.pedestrianTraffic = Math.max(baseFactors.pedestrianTraffic - 40, 0);
-      baseFactors.roadWidth = Math.max(baseFactors.roadWidth - 30, 10);
-    }
-
-    // Detect residential areas
-    if (instructions.includes('residential') || instructions.includes('neighborhood')) {
-      baseFactors.pedestrianTraffic += 20;
-      baseFactors.roadWidth += 15;
-    }
-
-    // Detect school zones or similar
-    if (instructions.includes('school') || instructions.includes('park')) {
-      baseFactors.pedestrianTraffic += 40;
-    }
-
-    // Clamp all values to 0-100 range
-    Object.keys(baseFactors).forEach(key => {
-      baseFactors[key as keyof typeof baseFactors] = Math.min(Math.max(baseFactors[key as keyof typeof baseFactors], 0), 100);
-    });
-
-    return baseFactors;
-  }
-
-  private extractStreetName(instructions: string): string {
-    // Remove HTML tags and extract street name
-    const cleanInstructions = instructions.replace(/<[^>]*>/g, '');
-    
-    // Common patterns to extract street names
-    const patterns = [
-      /on (.+?)(?:\s|$)/i,
-      /onto (.+?)(?:\s|$)/i,
-      /via (.+?)(?:\s|$)/i,
-      /toward (.+?)(?:\s|$)/i,
-      /continue on (.+?)(?:\s|$)/i
-    ];
-
-    for (const pattern of patterns) {
-      const match = cleanInstructions.match(pattern);
-      if (match && match[1]) {
-        return match[1].trim();
-      }
-    }
-
-    // Fallback: use first few words of instructions
-    const words = cleanInstructions.split(' ').slice(0, 3);
-    return words.join(' ') || 'Unknown Street';
-  }
-
-  private estimateTrafficCongestion(step: google.maps.DirectionsStep): number {
-    // Estimate traffic based on duration vs distance
-    const distance = step.distance?.value || 1;
-    const duration = step.duration?.value || 1;
-    const speed = (distance / 1609.34) / (duration / 3600); // mph
-
-    // Lower speeds indicate higher congestion
-    if (speed < 10) return 90;
-    if (speed < 15) return 80;
-    if (speed < 25) return 60;
-    if (speed < 35) return 40;
-    if (speed < 45) return 25;
-    return 15;
-  }
-
-  private generateEnhancedSegmentDescription(
-    step: google.maps.DirectionsStep,
-    roadData: RoadData,
-    riskFactors: any,
-    vehicle: Vehicle
-  ): string {
-    const factors = [];
-    const instructions = step.instructions.toLowerCase();
-    
-    // Analyze turn complexity for buses
-    if (vehicle.length >= 35 && (instructions.includes('turn') || instructions.includes('onto'))) {
-      if (instructions.includes('sharp') || riskFactors.roadWidth > 70) {
-        factors.push('challenging turn for large vehicle');
-      } else {
-        factors.push('moderate turn');
-      }
-    }
-    
-    if (riskFactors.pedestrianTraffic > 70) {
-      factors.push('heavy pedestrian activity');
-    }
-    
-    if (riskFactors.roadWidth > 60) {
-      factors.push('narrow road conditions');
-    }
-    
-    if (riskFactors.trafficCongestion > 70) {
-      factors.push('heavy traffic congestion');
-    }
-    
-    if (roadData.heightRestrictions && roadData.heightRestrictions > 0) {
-      factors.push(`${roadData.heightRestrictions}ft height limit`);
-    }
-
-    if (factors.length === 0) {
-      return 'Standard road conditions';
-    }
-
-    return factors.join(', ');
-  }
-
-  private identifyCriticalPoints(segments: RouteSegment[], vehicle: Vehicle): CriticalPoint[] {
-    const criticalPoints: CriticalPoint[] = [];
-
-    segments.forEach((segment, index) => {
-      const riskScore = RiskCalculator.calculateSegmentRisk(segment, vehicle);
-      const detailedRisk = RiskCalculator.calculateDetailedRisk(segment, vehicle);
-      
-      // Enhanced critical point detection
-      if (riskScore > 60 || detailedRisk.primaryConcerns.length > 0) {
-        let type: CriticalPoint['type'] = 'intersection';
-        let description = '';
-
-        // Height restrictions are always critical
-        if (segment.riskFactors.heightRestriction > 0 && 
-            segment.riskFactors.heightRestriction <= vehicle.height + 1) {
-          type = 'bridge';
-          description = `Height restriction: ${segment.riskFactors.heightRestriction}ft clearance (Vehicle: ${vehicle.height}ft)`;
-        } 
-        // Narrow roads for large vehicles
-        else if (segment.riskFactors.roadWidth > 70 && vehicle.length >= 35) {
-          type = 'narrow_road';
-          description = 'Narrow road with limited maneuvering space for large vehicle';
-        } 
-        // Turn complexity for buses
-        else if (vehicle.length >= 35 && segment.streetName.toLowerCase().includes('turn')) {
-          type = 'turn';
-          const turnAnalysis = RiskCalculator.analyzeTurn(segment, vehicle);
-          description = `${turnAnalysis.difficulty.replace('_', ' ')} turn - ${Math.round(turnAnalysis.angle)}° angle, ${Math.round(turnAnalysis.clearanceRequired)}ft clearance needed`;
-        }
-        // High pedestrian areas
-        else if (segment.riskFactors.pedestrianTraffic > 80) {
-          type = 'intersection';
-          description = 'High pedestrian traffic area with crossing activity';
-        } 
-        // General high-risk area
-        else {
-          type = 'intersection';
-          description = detailedRisk.primaryConcerns[0] || 'High-risk navigation point';
-        }
-
-        criticalPoints.push({
-          segmentId: segment.id,
-          type,
-          riskLevel: riskScore > 80 ? 'critical' : 'high',
-          description: `${description}`,
-          position: index
-        });
       }
     });
+  });
+  
+  // Normalize risk score to 0-100 range
+  const normalizedScore = Math.min(100, totalRiskScore);
+  
+  // Create a new route with the risk score
+  const analyzedRoute: Route = {
+    ...route,
+    riskScore: normalizedScore
+  };
+  
+  return {
+    route: analyzedRoute,
+    riskFactors: relevantRiskFactors
+  };
+}
 
-    return criticalPoints;
-  }
+// Helper function to check if a point is near a line segment
+function isPointNearLineSegment(
+  point: { lat: number, lng: number },
+  lineStart: { lat: number, lng: number },
+  lineEnd: { lat: number, lng: number },
+  threshold: number
+): boolean {
+  // Calculate distance from point to line segment
+  const distance = distanceToLineSegment(
+    point.lat, point.lng,
+    lineStart.lat, lineStart.lng,
+    lineEnd.lat, lineEnd.lng
+  );
+  
+  return distance < threshold;
+}
 
-  private metersToMiles(meters: number): number {
-    return Math.round((meters * 0.000621371) * 10) / 10;
+// Calculate distance from point to line segment
+function distanceToLineSegment(
+  px: number, py: number,
+  x1: number, y1: number,
+  x2: number, y2: number
+): number {
+  const A = px - x1;
+  const B = py - y1;
+  const C = x2 - x1;
+  const D = y2 - y1;
+  
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  let param = -1;
+  
+  if (lenSq !== 0) {
+    param = dot / lenSq;
   }
+  
+  let xx, yy;
+  
+  if (param < 0) {
+    xx = x1;
+    yy = y1;
+  } else if (param > 1) {
+    xx = x2;
+    yy = y2;
+  } else {
+    xx = x1 + param * C;
+    yy = y1 + param * D;
+  }
+  
+  const dx = px - xx;
+  const dy = py - yy;
+  
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Get all risk factors for display
+export function getAllRiskFactors(): RiskFactor[] {
+  return RISK_FACTORS;
 }
