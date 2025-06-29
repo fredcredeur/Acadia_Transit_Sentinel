@@ -170,6 +170,7 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
       const routeResponse = await googleMapsService.getRoutes({
         origin,
         destination,
+        waypoints: route.waypoints, // ← ADD THIS LINE
         travelMode: google.maps.TravelMode.DRIVING,
         avoidHighways: false,
         avoidTolls: false
@@ -184,6 +185,10 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
           request: {
             origin,
             destination,
+            waypoints: route.waypoints?.map(waypoint => ({
+              location: waypoint,
+              stopover: true
+            })) || [], // ← ADD THESE LINES
             travelMode: google.maps.TravelMode.DRIVING
           }
         } as google.maps.DirectionsResult);
