@@ -41,6 +41,12 @@ export interface RouteSegment {
     heightRestriction: number;
   };
   description: string;
+  liveTrafficData?: { // 🚦 NEW: Live traffic information
+    congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
+    currentSpeed: number;
+    normalSpeed: number;
+    trafficDelay: number;
+  };
 }
 
 export interface Route {

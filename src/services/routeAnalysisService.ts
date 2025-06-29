@@ -288,6 +288,31 @@ export class RouteAnalysisService {
     return names[index] || `Route ${index + 1}`;
   }
 
+  private calculateLiveTrafficCongestion(
+    step: google.maps.DirectionsStep, 
+    leg: google.maps.DirectionsLeg
+  ): number {
+    
+    // Use live traffic data if available
+    if (leg.duration_in_traffic && leg.duration) {
+      const normalDuration = leg.duration.value;
+      const trafficDuration = leg.duration_in_traffic.value;
+      const trafficRatio = trafficDuration / normalDuration;
+      
+      console.log(`🚦 Live traffic ratio: ${trafficRatio.toFixed(2)} (${leg.duration.text} → ${leg.duration_in_traffic.text})`);
+      
+      // Convert ratio to congestion percentage
+      if (trafficRatio <= 1.1) return 10;  // Light traffic
+      if (trafficRatio <= 1.3) return 30;  // Moderate traffic  
+      if (trafficRatio <= 1.7) return 60;  // Heavy traffic
+      if (trafficRatio <= 2.0) return 80;  // Very heavy traffic
+      return 95; // Severe congestion
+    }
+    
+    // Fallback to speed-based estimation
+    return this.estimateTrafficCongestion(step);
+  }
+
   private async createSegmentsFromLegs(
     legs: google.maps.DirectionsLeg[],
     routeId: string,
@@ -296,29 +321,40 @@ export class RouteAnalysisService {
     const segments: RouteSegment[] = [];
     let segmentCounter = 0;
 
-    console.log(`Processing ${legs.length} legs for route segments`);
+    console.log(`🚦 Processing ${legs.length} legs with live traffic data`);
 
     for (const leg of legs) {
       const steps = leg.steps || [];
-      console.log(`Processing ${steps.length} steps in leg`);
+      console.log(`Processing ${steps.length} steps in leg with traffic data`);
+
+      // Log live traffic information for this leg
+      if (leg.duration_in_traffic) {
+        const delay = leg.duration_in_traffic.value - leg.duration!.value;
+        console.log(`🚦 Leg traffic delay: ${Math.round(delay / 60)} minutes`);
+      }
 
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
         const startLocation = step.start_location;
         const endLocation = step.end_location;
 
-        // Get road data for this segment
-        const roadData = await this.googleMapsService.getRoadData(
+        // Get enhanced road data with live traffic
+        const roadData = await this.googleMapsService.getEnhancedRoadData(
           startLocation.lat(),
           startLocation.lng()
         );
 
-        // Extract enhanced street name
         const streetName = this.extractStreetName(step.instructions);
         
-        // Enhanced risk factor calculation
-        const riskFactors = this.calculateEnhancedRiskFactors(step, roadData, vehicle);
-        
+        // Use live traffic data for risk calculation
+        const riskFactors = {
+          pedestrianTraffic: roadData.pedestrianTraffic || 30,
+          roadWidth: roadData.roadWidth || 40,
+          trafficCongestion: this.calculateLiveTrafficCongestion(step, leg), // 🚦 LIVE DATA
+          speedLimit: roadData.speedLimit || 35,
+          heightRestriction: roadData.heightRestrictions || 0
+        };
+
         const segment: RouteSegment = {
           id: `${routeId}-seg-${segmentCounter + 1}`,
           startLat: startLocation.lat(),
@@ -326,22 +362,18 @@ export class RouteAnalysisService {
           endLat: endLocation.lat(),
           endLng: endLocation.lng(),
           streetName,
-          riskScore: 0, // Will be calculated by RiskCalculator
+          riskScore: 0,
           riskFactors,
-          description: this.generateEnhancedSegmentDescription(step, roadData, riskFactors, vehicle)
+          description: this.generateEnhancedSegmentDescription(step, roadData, riskFactors, vehicle),
+          liveTrafficData: roadData.liveTraffic // 🚦 NEW: Include live traffic info
         };
 
         segments.push(segment);
         segmentCounter++;
-        
-        // Add a small delay every 10 requests to avoid rate limiting
-        if (segmentCounter % 10 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
       }
     }
 
-    console.log(`Created ${segments.length} total segments with enhanced descriptions`);
+    console.log(`✅ Created ${segments.length} segments with live traffic analysis`);
     return segments;
   }
 

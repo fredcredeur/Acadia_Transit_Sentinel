@@ -148,167 +148,86 @@ export class GoogleMapsService {
     return { address: cleanAddress };
   }
 
-  public async getRoutes(request: RouteRequest): Promise<RouteResponse> {
-    if (!this.directionsService) {
+  public async getRoutes(request: {
+    origin: string;
+    destination: string;
+    waypoints?: string[];
+    travelMode?: google.maps.TravelMode;
+    avoidHighways?: boolean;
+    avoidTolls?: boolean;
+    departureTime?: Date; // NEW: For live traffic
+  }): Promise<google.maps.DirectionsResult> {
+    
+    if (!this.isInitialized) {
       throw new Error('Google Maps service not initialized. Please ensure the API key is configured correctly.');
     }
 
     try {
-      console.log('Getting routes from', request.origin, 'to', request.destination);
-      if (request.waypoints && request.waypoints.length > 0) {
-        console.log('With waypoints:', request.waypoints);
-      }
+      console.log('🚦 Getting routes with live traffic data...');
       
-      // First, try to geocode the origin to establish a regional preference
-      let preferredRegion: { lat: number; lng: number; radius: number } | undefined;
-      
-      try {
-        // Try to geocode the origin first to establish regional context
-        const originGeocode = await this.geocodeAddress(request.origin);
-        if (originGeocode.length > 0) {
-          const originLocation = originGeocode[0].geometry.location;
-          preferredRegion = {
-            lat: originLocation.lat(),
-            lng: originLocation.lng(),
-            radius: 50000 // 50km radius for local preference
-          };
-          console.log('Established regional preference around:', preferredRegion);
-        }
-      } catch (error) {
-        console.warn('Could not establish regional preference:', error);
-      }
-
-      // Validate and clean origin and destination
-      const [originResult, destinationResult] = await Promise.all([
-        this.validateAndCleanAddress(request.origin, preferredRegion),
-        this.validateAndCleanAddress(request.destination, preferredRegion)
-      ]);
-
-      console.log('Cleaned addresses:', originResult.address, '→', destinationResult.address);
-
-      // Validate and clean waypoints if provided
-      let waypointResults: { address: string; coordinates?: { lat: number; lng: number } }[] = [];
-      if (request.waypoints && request.waypoints.length > 0) {
-        console.log('Validating waypoints...');
-        waypointResults = await Promise.all(
-          request.waypoints.map(waypoint => this.validateAndCleanAddress(waypoint, preferredRegion))
-        );
-        console.log('Cleaned waypoints:', waypointResults.map(w => w.address));
-      }
-
-      // Check if addresses have coordinates and calculate total distance
-      if (originResult.coordinates && destinationResult.coordinates) {
-        const distance = this.calculateDistanceInMiles(
-          originResult.coordinates.lat,
-          originResult.coordinates.lng,
-          destinationResult.coordinates.lat,
-          destinationResult.coordinates.lng
-        );
-        
-        console.log('Distance between origin and destination:', distance, 'miles');
-        
-        // If distance is very large (>200 miles), warn the user
-        if (distance > 200) {
-          console.warn('Large distance detected, addresses may be in different regions');
-          throw new Error(`The distance between these addresses is ${Math.round(distance)} miles. Please verify:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"\n\nIf this seems incorrect, try adding city and state to both addresses.`);
-        }
-      }
-
-      // Prepare waypoints for Google Maps API
+      // Prepare waypoints
       let googleWaypoints: google.maps.DirectionsWaypoint[] = [];
-      if (waypointResults.length > 0) {
-        googleWaypoints = waypointResults.map(waypoint => ({
-          location: waypoint.coordinates 
-            ? new google.maps.LatLng(waypoint.coordinates.lat, waypoint.coordinates.lng)
-            : waypoint.address,
+      if (request.waypoints && request.waypoints.length > 0) {
+        googleWaypoints = request.waypoints.map(waypoint => ({
+          location: waypoint,
           stopover: true
         }));
       }
 
-      // Use coordinates if available, otherwise use the cleaned address
-      const originForDirections = originResult.coordinates 
-        ? new google.maps.LatLng(originResult.coordinates.lat, originResult.coordinates.lng)
-        : originResult.address;
+      // Enhanced directions request with traffic data
+      const directionsRequest: google.maps.DirectionsRequest = {
+        origin: request.origin,
+        destination: request.destination,
+        waypoints: googleWaypoints,
+        travelMode: request.travelMode || google.maps.TravelMode.DRIVING,
+        avoidHighways: request.avoidHighways || false,
+        avoidTolls: request.avoidTolls || false,
         
-      const destinationForDirections = destinationResult.coordinates
-        ? new google.maps.LatLng(destinationResult.coordinates.lat, destinationResult.coordinates.lng)
-        : destinationResult.address;
+        // 🚦 LIVE TRAFFIC CONFIGURATION
+        drivingOptions: {
+          departureTime: request.departureTime || new Date(), // Current time = live traffic
+          trafficModel: google.maps.TrafficModel.BEST_GUESS   // Use live traffic data
+        },
+        
+        // Request multiple route alternatives to compare traffic
+        provideRouteAlternatives: true,
+        
+        // Optimize waypoints for better traffic analysis
+        optimizeWaypoints: false // Keep user-specified order
+      };
+
+      console.log('📡 Requesting routes with traffic model:', directionsRequest.drivingOptions?.trafficModel);
 
       return new Promise((resolve, reject) => {
-        const directionsRequest: google.maps.DirectionsRequest = {
-          origin: originForDirections,
-          destination: destinationForDirections,
-          waypoints: googleWaypoints.length > 0 ? googleWaypoints : undefined,
-          travelMode: request.travelMode,
-          avoidHighways: request.avoidHighways || false,
-          avoidTolls: request.avoidTolls || false,
-          provideRouteAlternatives: googleWaypoints.length === 0, // Only provide alternatives if no waypoints
-          unitSystem: google.maps.UnitSystem.IMPERIAL,
-          optimizeWaypoints: false, // Keep waypoints in order
-          region: 'US' // Bias results to US
-        };
-
-        console.log('Sending directions request to Google Maps:', directionsRequest);
-
-        this.directionsService!.route(directionsRequest, (result, status) => {
-          console.log('Directions response status:', status);
-          
+        const directionsService = new google.maps.DirectionsService();
+        
+        directionsService.route(directionsRequest, (result, status) => {
           if (status === google.maps.DirectionsStatus.OK && result) {
-            console.log('Directions successful, found', result.routes.length, 'routes');
+            console.log('✅ Routes received with live traffic data');
+            console.log(`📊 Found ${result.routes.length} route(s) with traffic information`);
             
-            // Log route details for debugging
+            // Log traffic information for debugging
             result.routes.forEach((route, index) => {
-              const totalDistance = route.legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
-              const totalDuration = route.legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
-              const distanceText = (totalDistance / 1609.34).toFixed(1) + ' miles';
-              const durationText = Math.round(totalDuration / 60) + ' min';
-              console.log(`Route ${index + 1}: ${distanceText}, ${durationText}`);
-              
-              // Log waypoint info if present
-              if (route.legs.length > 1) {
-                console.log(`  - ${route.legs.length} legs (${route.legs.length - 1} waypoints)`);
-              }
+              route.legs.forEach((leg, legIndex) => {
+                console.log(`Route ${index + 1}, Leg ${legIndex + 1}:`);
+                console.log(`  📍 ${leg.start_address} → ${leg.end_address}`);
+                console.log(`  📏 Distance: ${leg.distance?.text}`);
+                console.log(`  ⏱️ Duration: ${leg.duration?.text}`);
+                
+                // Check for traffic-aware duration
+                if (leg.duration_in_traffic) {
+                  console.log(`  🚦 Duration in traffic: ${leg.duration_in_traffic.text}`);
+                  console.log(`  ⚡ Traffic delay: ${leg.duration_in_traffic.value - leg.duration!.value} seconds`);
+                } else {
+                  console.log('  ⚠️ No traffic data available for this leg');
+                }
+              });
             });
             
-            resolve({ routes: result.routes, status });
+            resolve(result);
           } else {
-            console.error('Directions request failed with status:', status);
-            
-            // Provide more specific error messages
-            let errorMessage = 'Directions request failed';
-            
-            switch (status) {
-              case google.maps.DirectionsStatus.NOT_FOUND:
-                errorMessage = `Address not found. Please check:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"`;
-                if (request.waypoints && request.waypoints.length > 0) {
-                  errorMessage += `\n• Waypoints: ${request.waypoints.join(', ')}`;
-                }
-                errorMessage += '\n\nTry using more specific addresses with city and state.';
-                break;
-              case google.maps.DirectionsStatus.ZERO_RESULTS:
-                errorMessage = `No route found between the specified locations:\n• From: "${request.origin}"\n• To: "${request.destination}"`;
-                if (request.waypoints && request.waypoints.length > 0) {
-                  errorMessage += `\n• Via: ${request.waypoints.join(', ')}`;
-                }
-                errorMessage += '\n\nTry different addresses or check if all locations are accessible by road.';
-                break;
-              case google.maps.DirectionsStatus.OVER_QUERY_LIMIT:
-                errorMessage = 'Too many requests. Please wait a moment and try again.';
-                break;
-              case google.maps.DirectionsStatus.REQUEST_DENIED:
-                errorMessage = 'Directions request denied. Please check your API key configuration and ensure the Directions API is enabled.';
-                break;
-              case google.maps.DirectionsStatus.INVALID_REQUEST:
-                errorMessage = `Invalid request. Please check your addresses:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"`;
-                if (request.waypoints && request.waypoints.length > 0) {
-                  errorMessage += `\n• Waypoints: ${request.waypoints.join(', ')}`;
-                }
-                break;
-              default:
-                errorMessage = `Directions request failed with status: ${status}`;
-            }
-            
-            reject(new Error(errorMessage));
+            console.error('❌ Directions request failed:', status);
+            reject(new Error(`Directions request failed: ${status}`));
           }
         });
       });
@@ -316,6 +235,103 @@ export class GoogleMapsService {
       console.error('Error in getRoutes:', error);
       throw error;
     }
+  }
+
+  public async getLiveTrafficData(lat: number, lng: number, radiusMeters: number = 1000): Promise<{
+    congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
+    averageSpeed: number;
+    incidents: Array<{
+      type: 'accident' | 'construction' | 'closure';
+      description: string;
+      severity: 'minor' | 'major';
+    }>;
+  }> {
+    
+    // Note: This would require Google Traffic API or Distance Matrix API
+    // For now, we'll enhance the existing route-based traffic detection
+    
+    try {
+      // Get current traffic conditions by requesting a short route in the area
+      const testDestination = `${lat + 0.005},${lng + 0.005}`; // ~500m away
+      const testOrigin = `${lat},${lng}`;
+      
+      const result = await this.getRoutes({
+        origin: testOrigin,
+        destination: testDestination,
+        departureTime: new Date()
+      });
+      
+      if (result.routes.length > 0) {
+        const leg = result.routes[0].legs[0];
+        const duration = leg.duration?.value || 0;
+        const durationInTraffic = leg.duration_in_traffic?.value || duration;
+        const distance = leg.distance?.value || 1;
+        
+        // Calculate current speed and congestion
+        const normalSpeed = (distance / duration) * 2.237; // m/s to mph
+        const currentSpeed = (distance / durationInTraffic) * 2.237;
+        const congestionRatio = duration / durationInTraffic;
+        
+        let congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
+        if (congestionRatio <= 1.1) congestionLevel = 'low';
+        else if (congestionRatio <= 1.3) congestionLevel = 'moderate';
+        else if (congestionRatio <= 1.7) congestionLevel = 'heavy';
+        else congestionLevel = 'severe';
+        
+        return {
+          congestionLevel,
+          averageSpeed: currentSpeed,
+          incidents: [] // Would be populated from traffic incidents API
+        };
+      }
+      
+      return {
+        congestionLevel: 'low',
+        averageSpeed: 30,
+        incidents: []
+      };
+      
+    } catch (error) {
+      console.warn('Could not get live traffic data:', error);
+      return {
+        congestionLevel: 'moderate',
+        averageSpeed: 25,
+        incidents: []
+      };
+    }
+  }
+
+  // NEW: Enhanced road data with live traffic integration
+  public async getEnhancedRoadData(lat: number, lng: number): Promise<RoadData & {
+    liveTraffic: {
+      congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
+      currentSpeed: number;
+      normalSpeed: number;
+      trafficDelay: number; // seconds
+    };
+  }> {
+    
+    // Get base road data
+    const baseData = await this.getRoadData(lat, lng);
+    
+    // Get live traffic data
+    const trafficData = await this.getLiveTrafficData(lat, lng);
+    
+    // Estimate normal speed based on road type
+    const normalSpeed = baseData.speedLimit || 35;
+    const trafficDelay = trafficData.congestionLevel === 'low' ? 0 :
+                        trafficData.congestionLevel === 'moderate' ? 30 :
+                        trafficData.congestionLevel === 'heavy' ? 120 : 300;
+    
+    return {
+      ...baseData,
+      liveTraffic: {
+        congestionLevel: trafficData.congestionLevel,
+        currentSpeed: trafficData.averageSpeed,
+        normalSpeed,
+        trafficDelay
+      }
+    };
   }
 
   public async getRoadData(lat: number, lng: number): Promise<RoadData> {
