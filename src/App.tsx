@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Truck, Map, AlertTriangle } from 'lucide-react';
 import { VehicleForm } from './components/VehicleForm';
-import { RouteMap } from './components/RouteMap';
+import { MultiRouteMapComponent } from './components/MultiRouteMapComponent';
 import { RouteComparison } from './components/RouteComparison';
+import { RouteComparisonAnalytics } from './components/RouteComparisonAnalytics';
 import { CriticalPoints } from './components/CriticalPoints';
+import { Navigation } from 'lucide-react';
+import { RiskCalculator } from './utils/riskCalculator';
 import { RouteInput } from './components/RouteInput';
 import { DarkModeToggle } from './components/DarkModeToggle';
 import { Vehicle, Route, StopLocation } from './types';
@@ -204,27 +207,132 @@ function App() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            {/* Main Content - Route Map */}
-            <div className="xl:col-span-2">
-              {selectedRoute ? (
-                <RouteMap 
-                  route={selectedRoute} 
-                  vehicle={vehicle}
-                  useGoogleMaps={useRealData}
-                />
-              ) : (
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-96 flex items-center justify-center">
-                  <p className="text-gray-500 dark:text-gray-400">Enter origin and destination to analyze a route.</p>
-                </div>
-              )}
-            </div>
+          <div className="space-y-8">
+    {/* Route Comparison Analytics - NEW */}
+    <RouteComparisonAnalytics
+      routes={routes}
+      selectedRouteId={selectedRouteId}
+      vehicle={vehicle}
+      onRouteSelect={setSelectedRouteId}
+    />
 
-            {/* Side Panel - Critical Points */}
-            <div className="xl:col-span-1">
-              <CriticalPoints route={selectedRoute} vehicle={vehicle} />
+    {/* Main Route Details Grid */}
+    <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+      {/* Route Selection Panel */}
+      <div className="xl:col-span-1 order-2 xl:order-1">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
+              <Navigation className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Route Selection</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {routes.length} route{routes.length !== 1 ? 's' : ''} available
+              </p>
             </div>
           </div>
+
+          {/* Quick Route Selector */}
+          <div className="space-y-2">
+            {routes.map((route, index) => {
+              const isSelected = route.id === selectedRouteId;
+              const riskScore = RiskCalculator.calculateRouteRisk(route, vehicle);
+              const routeColor = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#9333ea'][index % 5];
+              
+              return (
+                <button
+                  key={route.id}
+                  onClick={() => setSelectedRouteId(route.id)}
+                  className={`w-full p-3 rounded-lg border text-left transition-all ${
+                    isSelected 
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                      : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: routeColor }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900 dark:text-white truncate">
+                        {route.name}
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        {route.totalDistance}mi • {route.estimatedTime}min
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div 
+                        className="text-lg font-bold"
+                        style={{ color: RiskCalculator.getRiskColor(riskScore) }}
+                      >
+                        {Math.round(riskScore)}%
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Quick Actions */}
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+            <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Quick Actions:</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button 
+                onClick={() => {
+                  const safestRoute = routes.reduce((best, current) => {
+                    const currentRisk = RiskCalculator.calculateRouteRisk(current, vehicle);
+                    const bestRisk = RiskCalculator.calculateRouteRisk(best, vehicle);
+                    return currentRisk < bestRisk ? current : best;
+                  });
+                  setSelectedRouteId(safestRoute.id);
+                }}
+                className="px-3 py-2 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+              >
+                🛡️ Safest
+              </button>
+              <button 
+                onClick={() => {
+                  const fastestRoute = routes.reduce((best, current) => 
+                    current.estimatedTime < best.estimatedTime ? current : best
+                  );
+                  setSelectedRouteId(fastestRoute.id);
+                }}
+                className="px-3 py-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+              >
+                ⚡ Fastest
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Multi-Route Map */}
+      <div className="xl:col-span-2 order-1 xl:order-2">
+        {routes.length > 0 ? (
+          <MultiRouteMapComponent
+            routes={routes}
+            selectedRouteId={selectedRouteId}
+            vehicle={vehicle}
+            onRouteSelect={setSelectedRouteId}
+            className="h-[600px] rounded-lg shadow-md"
+          />
+        ) : (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-[600px] flex items-center justify-center">
+            <p className="text-gray-500 dark:text-gray-400">Enter origin and destination to analyze routes.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Enhanced Critical Points Panel */}
+      <div className="xl:col-span-1 order-3">
+        <CriticalPoints route={selectedRoute} vehicle={vehicle} />
+      </div>
+    </div>
+  </div>
         )}
 
         {/* Setup Instructions */}
