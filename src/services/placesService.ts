@@ -23,8 +23,7 @@ export interface PlaceDetails {
 
 export class PlacesService {
   private static instance: PlacesService;
-  private autocompleteService?: google.maps.places.AutocompleteService;
-  private placesService?: google.maps.places.PlacesService;
+  private autocomplete?: google.maps.places.Autocomplete;
   private isInitialized = false;
 
   private constructor() {}
@@ -47,20 +46,6 @@ export class PlacesService {
 
       const google = (window as any).google;
       
-      this.autocompleteService = new google.maps.places.AutocompleteService();
-      
-      // Create a dummy div for PlacesService (required by Google Maps API)
-      const dummyDiv = document.createElement('div');
-      dummyDiv.style.display = 'none';
-      document.body.appendChild(dummyDiv);
-      
-      const dummyMap = new google.maps.Map(dummyDiv, {
-        center: { lat: 40.7128, lng: -74.0060 },
-        zoom: 1
-      });
-      
-      this.placesService = new google.maps.places.PlacesService(dummyMap);
-      
       this.isInitialized = true;
       console.log('Places service initialized successfully');
     } catch (error) {
@@ -76,7 +61,7 @@ export class PlacesService {
       componentRestrictions?: google.maps.places.ComponentRestrictions;
     }
   ): Promise<PlacePrediction[]> {
-    if (!this.autocompleteService) {
+    if (!this.isInitialized) {
       console.warn('Places service not initialized, attempting to initialize...');
       try {
         await this.initialize();
@@ -90,14 +75,14 @@ export class PlacesService {
       return [];
     }
 
-    return new Promise((resolve, reject) => {
-      const request: google.maps.places.AutocompletionRequest = {
-        input: input.trim(),
-        types: options?.types || ['address'],
-        componentRestrictions: options?.componentRestrictions || { country: 'us' }
-      };
+    const autocomplete = new google.maps.places.Autocomplete(document.createElement('input'), {
+      types: options?.types || ['address'],
+      componentRestrictions: options?.componentRestrictions || { country: 'us' }
+    });
 
-      this.autocompleteService!.getPlacePredictions(request, (predictions, status) => {
+    return new Promise((resolve, reject) => {
+      const service = new google.maps.places.AutocompleteService();
+      service.getPlacePredictions({ input }, (predictions, status) => {
         if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
           const formattedPredictions: PlacePrediction[] = predictions.map(prediction => ({
             place_id: prediction.place_id || '',
@@ -120,39 +105,32 @@ export class PlacesService {
   }
 
   public async getPlaceDetails(placeId: string): Promise<PlaceDetails> {
-    if (!this.placesService) {
+    if (!this.isInitialized) {
       throw new Error('Places service not initialized');
     }
 
-    return new Promise((resolve, reject) => {
-      const request: google.maps.places.PlaceDetailsRequest = {
-        placeId,
-        fields: ['place_id', 'formatted_address', 'geometry', 'name', 'types']
-      };
+    const place = new google.maps.places.Place({ id: placeId });
+    await place.fetchFields({ fields: ['id', 'formattedAddress', 'location', 'displayName', 'types'] });
 
-      this.placesService!.getDetails(request, (place, status) => {
-        if (status === google.maps.places.PlacesServiceStatus.OK && place) {
-          const placeDetails: PlaceDetails = {
-            place_id: place.place_id || '',
-            formatted_address: place.formatted_address || '',
-            geometry: {
-              location: {
-                lat: place.geometry?.location?.lat() || 0,
-                lng: place.geometry?.location?.lng() || 0
-              }
-            },
-            name: place.name || '',
-            types: place.types || []
-          };
-          resolve(placeDetails);
-        } else {
-          reject(new Error(`Place details request failed: ${status}`));
+    if (!place.id) {
+      throw new Error('Place details request failed');
+    }
+
+    return {
+      place_id: place.id,
+      formatted_address: place.formattedAddress || '',
+      geometry: {
+        location: {
+          lat: place.location?.lat() || 0,
+          lng: place.location?.lng() || 0
         }
-      });
-    });
+      },
+      name: place.displayName || '',
+      types: place.types || []
+    };
   }
 
   public isReady(): boolean {
-    return this.isInitialized && !!this.autocompleteService;
+    return this.isInitialized;
   }
 }
