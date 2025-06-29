@@ -1,6 +1,7 @@
 import { GoogleMapsService, RoadData } from './googleMapsService';
-import { Route, RouteSegment, CriticalPoint, Vehicle, StopLocation } from '../types';
+import { Route, RouteSegment, CriticalPoint, Vehicle, StopLocation, TruckRouteRestriction } from '../types';
 import { RiskCalculator } from '../utils/riskCalculator';
+import { USTruckRoutingService } from './usTruckRoutingService';
 
 export interface RouteAnalysisRequest {
   origin: string;
@@ -14,6 +15,15 @@ export interface RouteAnalysisRequest {
 export interface RouteAnalysisResult {
   routes: Route[];
   recommendedRouteId: string;
+}
+
+export interface EnhancedRouteAnalysisResult extends RouteAnalysisResult {
+  complianceAnalysis: {
+    compliant: boolean;
+    violations: TruckRouteRestriction[];
+    recommendations: string[];
+    nationalNetworkCoverage: number;
+  };
 }
 
 export class RouteAnalysisService {
@@ -689,5 +699,90 @@ private generateEnhancedSegmentDescription(
 
   private metersToMiles(meters: number): number {
     return Math.round((meters * 0.000621371) * 10) / 10;
+  }
+}
+
+export class EnhancedRouteAnalysisService extends RouteAnalysisService {
+  private usTruckRoutingService: USTruckRoutingService;
+
+  constructor() {
+    super();
+    this.usTruckRoutingService = USTruckRoutingService.getInstance();
+  }
+
+  public async analyzeRoutes(request: RouteAnalysisRequest): Promise<EnhancedRouteAnalysisResult> {
+    console.log('🏛️ Starting enhanced route analysis with government compliance...');
+    
+    // Run standard route analysis first
+    const standardResult = await super.analyzeRoutes(request);
+    
+    // Add government compliance analysis
+    const routesWithCompliance = await Promise.all(
+      standardResult.routes.map(async route => {
+        const complianceAnalysis = this.usTruckRoutingService.evaluateRouteCompliance(
+          route.segments.map(seg => ({
+            streetName: seg.streetName,
+            startLat: seg.startLat,
+            startLng: seg.startLng
+          })),
+          request.vehicle
+        );
+
+        return {
+          ...route,
+          complianceAnalysis,
+          // Adjust risk score based on compliance
+          overallRisk: this.adjustRiskForCompliance(route.overallRisk, complianceAnalysis)
+        };
+      })
+    );
+
+    // Sort routes prioritizing compliant routes
+    const sortedRoutes = routesWithCompliance.sort((a, b) => {
+      // Non-compliant routes go to bottom
+      if (!a.complianceAnalysis.compliant && b.complianceAnalysis.compliant) return 1;
+      if (a.complianceAnalysis.compliant && !b.complianceAnalysis.compliant) return -1;
+      
+      // Among compliant routes, sort by risk
+      return a.overallRisk - b.overallRisk;
+    });
+
+    // Select recommended route (first compliant route)
+    const recommendedRoute = sortedRoutes.find(r => r.complianceAnalysis.compliant) || sortedRoutes[0];
+
+    return {
+      ...standardResult,
+      routes: sortedRoutes,
+      recommendedRouteId: recommendedRoute.id,
+      complianceAnalysis: recommendedRoute.complianceAnalysis
+    };
+  }
+
+  private adjustRiskForCompliance(
+    baseRisk: number, 
+    compliance: { compliant: boolean; violations: TruckRouteRestriction[]; nationalNetworkCoverage: number }
+  ): number {
+    let adjustedRisk = baseRisk;
+    
+    // Severe penalty for non-compliant routes
+    if (!compliance.compliant) {
+      const prohibitions = compliance.violations.filter(v => v.severity === 'prohibition').length;
+      adjustedRisk += prohibitions * 30; // +30% risk per prohibition
+    }
+    
+    // Bonus for high National Network coverage
+    if (compliance.nationalNetworkCoverage >= 80) {
+      adjustedRisk -= 15; // -15% risk for good coverage
+    } else if (compliance.nationalNetworkCoverage < 50) {
+      adjustedRisk += 10; // +10% risk for poor coverage
+    }
+    
+    // Height/weight restriction penalties
+    const criticalViolations = compliance.violations.filter(v => 
+      v.type === 'height' || v.type === 'weight'
+    ).length;
+    adjustedRisk += criticalViolations * 20; // +20% risk per critical violation
+
+    return Math.min(Math.max(adjustedRisk, 0), 100);
   }
 }

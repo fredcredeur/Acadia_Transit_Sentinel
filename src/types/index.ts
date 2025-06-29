@@ -94,3 +94,12 @@ export interface StopLocation {
   order: number;
   estimatedStopTime?: number; // minutes
 }
+
+export interface TruckRouteRestriction {
+  type: 'height' | 'weight' | 'length' | 'width' | 'hazmat' | 'commercial_ban' | 'bridge' | 'tunnel';
+  value?: number; // feet for height, tons for weight
+  description: string;
+  severity: 'advisory' | 'restriction' | 'prohibition';
+  source: 'FHWA' | 'FMCSA' | 'State_DOT' | 'Local';
+  coordinates?: { lat: number; lng: number };
+}
