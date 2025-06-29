@@ -46,9 +46,6 @@ function App() {
 
   const handleStopsChange = (newStops: StopLocation[]) => {
     setStops(newStops);
-    if (lastAnalyzedOrigin && lastAnalyzedDestination) {
-      handleRouteAnalysis(lastAnalyzedOrigin, lastAnalyzedDestination, newStops);
-    }
   };
 
   const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[]) => {
@@ -73,7 +70,7 @@ function App() {
 
       setRoutes(result.routes);
       setSelectedRouteId(result.recommendedRouteId);
-      setCurrentView('details'); // Switch to details view to show the route
+      // setCurrentView('details'); // Removed automatic switch to details view
       
       // Store the successfully analyzed addresses and stops
       setLastAnalyzedOrigin(origin);
