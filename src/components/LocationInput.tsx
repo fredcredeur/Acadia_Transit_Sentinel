@@ -26,6 +26,7 @@ export const LocationInput: React.FC<LocationInputProps> = ({
   onPlaceSelect,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [newLocationName, setNewLocationName] = useState('');
   const [newLocationCategory, setNewLocationCategory] = useState<SavedLocation['category']>('other');
@@ -168,14 +169,18 @@ export const LocationInput: React.FC<LocationInputProps> = ({
       if (hasGoogleMaps && placesInitialized) {
         const placesService = PlacesService.getInstance();
         const placeDetails = await placesService.getPlaceDetails(prediction.place_id);
-        onChange(placeDetails.formatted_address);
-        onPlaceSelect?.(prediction.place_id, placeDetails.formatted_address);
+        const fullAddress = placeDetails.formatted_address;
+        onChange(fullAddress);
+        setSelectedAddress(fullAddress);
+        onPlaceSelect?.(prediction.place_id, fullAddress);
       } else {
         onChange(prediction.description);
+        setSelectedAddress(prediction.description);
       }
       setIsDropdownOpen(false);
     } catch (error) {
       onChange(prediction.description);
+      setSelectedAddress(prediction.description);
       setIsDropdownOpen(false);
     }
   };

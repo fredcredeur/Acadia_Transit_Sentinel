@@ -43,7 +43,7 @@ export class RiskCalculator {
     // Calculate individual risk components
     const pedestrianRisk = this.calculatePedestrianRisk(factors.pedestrianTraffic, vehicle);
     const maneuveringRisk = this.calculateManeuveringRisk(factors.roadWidth, vehicle);
-    const infrastructureRisk = this.calculateInfrastructureRisk(factors.heightRestriction, vehicle);
+    const infrastructureRisk = this.calculateInfrastructureRisk(factors.heightRestriction, vehicle.height);
     const trafficRisk = this.calculateTrafficRisk(factors.trafficCongestion, factors.speedLimit);
     const turnRisk = this.calculateTurnRisk(segment, vehicle);
 
@@ -64,7 +64,7 @@ export class RiskCalculator {
     
     const pedestrianRisk = this.calculatePedestrianRisk(factors.pedestrianTraffic, vehicle);
     const maneuveringRisk = this.calculateManeuveringRisk(factors.roadWidth, vehicle);
-    const infrastructureRisk = this.calculateInfrastructureRisk(factors.heightRestriction, vehicle);
+    const infrastructureRisk = this.calculateInfrastructureRisk(factors.heightRestriction, vehicle.height);
     const trafficRisk = this.calculateTrafficRisk(factors.trafficCongestion, factors.speedLimit);
     
     const overallRisk = this.calculateSegmentRisk(segment, vehicle);
@@ -184,22 +184,22 @@ export class RiskCalculator {
         }
       }
 
-      // Calculate time vs risk efficiency ratio
-      const timeVsRiskRatio = route.estimatedTime / Math.max(overallRisk, 1);
-
+      // Time vs. risk is no longer a simple ratio, handled in sort.
       return {
         ...route,
         overallRisk,
         riskBreakdown: avgBreakdown,
         busSpecificFactors,
-        timeVsRiskRatio
+        timeVsRiskRatio: 0 // Placeholder, not used in new sort
       };
     }).sort((a, b) => {
-      // Sort by overall risk first, then by time efficiency
-      if (Math.abs(a.overallRisk - b.overallRisk) < 5) {
-        return b.timeVsRiskRatio - a.timeVsRiskRatio; // Higher ratio is better
+      // Sort by overall risk first.
+      if (Math.abs(a.overallRisk - b.overallRisk) >= 5) {
+        return a.overallRisk - b.overallRisk;
       }
-      return a.overallRisk - b.overallRisk;
+      
+      // If risks are similar (within 5 points), prioritize the faster route.
+      return a.estimatedTime - b.estimatedTime;
     });
   }
 
