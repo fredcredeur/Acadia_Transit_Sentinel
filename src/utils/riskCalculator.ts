@@ -582,4 +582,13 @@ export class RiskCalculator {
       recommendation: 'Proceed with caution'
     };
   }
+
+  static getBusSpecificAdvice(vehicle: Vehicle, route: Route): string[] {
+    const advice: string[] = [];
+    if (vehicle.length >= 35) {
+      advice.push('Account for rear overhang swing during turns.');
+      advice.push('Use mirrors and blind spot monitoring systems actively.');
+    }
+    return advice;
+  }
 }

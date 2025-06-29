@@ -24,10 +24,7 @@ export class RouteAnalysisService {
   }
 
   public async analyzeRoutes(request: RouteAnalysisRequest): Promise<RouteAnalysisResult> {
-    console.log('Starting route analysis for:', request.origin, '→', request.destination);
-    if (request.stops && request.stops.length > 0) {
-      console.log('With stops:', request.stops.map(s => s.address));
-    }
+    console.log('🚦 Starting route analysis with live traffic data...');
     
     try {
       // Ensure Google Maps is initialized
@@ -114,7 +111,7 @@ export class RouteAnalysisService {
       const waypoints = request.stops?.map(stop => stop.address) || [];
       console.log('Prepared waypoints for Google Maps:', waypoints);
 
-      // Get routes from Google Maps with enhanced error handling
+      // Get routes with live traffic - ENHANCED
       const routeResponse = await this.googleMapsService.getRoutes({
         origin: request.origin,
         destination: request.destination,
@@ -125,7 +122,7 @@ export class RouteAnalysisService {
         departureTime: new Date() // 🚦 REQUEST LIVE TRAFFIC
       });
 
-      console.log('Google Maps returned', routeResponse.routes.length, 'routes');
+      console.log('📊 Google Maps returned', routeResponse.routes.length, 'routes with traffic data');
 
       if (!routeResponse.routes || routeResponse.routes.length === 0) {
         let errorMessage = `No routes found between:\n• From: "${request.origin}"\n• To: "${request.destination}"`;
@@ -288,6 +285,7 @@ export class RouteAnalysisService {
     
     return names[index] || `Route ${index + 1}`;
   }
+
 
   private calculateLiveTrafficCongestion(
     step: google.maps.DirectionsStep, 

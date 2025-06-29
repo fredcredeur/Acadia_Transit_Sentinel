@@ -78,7 +78,7 @@ export const CriticalPoints: React.FC<CriticalPointsProps> = ({ route, vehicle }
               <h4 className="font-medium text-blue-900 dark:text-blue-200">Bus Operation Guidelines</h4>
             </div>
             <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
-              {busAdvice.map((advice, index) => (
+              {busAdvice.map((advice: string, index: number) => (
                 <li key={index}>• {advice}</li>
               ))}
             </ul>
@@ -101,7 +101,7 @@ export const CriticalPoints: React.FC<CriticalPointsProps> = ({ route, vehicle }
       </div>
 
       <div className="space-y-4">
-        {route.criticalPoints.map((point, index) => {
+        {route.criticalPoints.map((point) => {
           const Icon = getIcon(point.type);
           const segment = route.segments.find(s => s.id === point.segmentId);
           const detailedRisk = segment ? RiskCalculator.calculateDetailedRisk(segment, vehicle) : null;
@@ -226,7 +226,7 @@ export const CriticalPoints: React.FC<CriticalPointsProps> = ({ route, vehicle }
                         <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-md">
                           <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Specific Concerns:</h5>
                           <ul className="text-xs text-gray-700 dark:text-gray-300 space-y-1">
-                            {detailedRisk.primaryConcerns.map((concern, idx) => (
+                            {detailedRisk.primaryConcerns.map((concern: string, idx: number) => (
                               <li key={idx} className="flex items-center gap-1">
                                 <div className="w-1 h-1 bg-amber-500 rounded-full"></div>
                                 {concern}
@@ -271,7 +271,7 @@ export const CriticalPoints: React.FC<CriticalPointsProps> = ({ route, vehicle }
             <h4 className="font-medium text-blue-900 dark:text-blue-200">Bus Operation Guidelines</h4>
           </div>
           <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
-            {busAdvice.map((advice, index) => (
+            {busAdvice.map((advice: string, index: number) => (
               <li key={index}>• {advice}</li>
             ))}
           </ul>

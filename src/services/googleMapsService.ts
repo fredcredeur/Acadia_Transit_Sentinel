@@ -237,6 +237,7 @@ export class GoogleMapsService {
     }
   }
 
+
   public async getLiveTrafficData(lat: number, lng: number, radiusMeters: number = 1000): Promise<{
     congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
     averageSpeed: number;

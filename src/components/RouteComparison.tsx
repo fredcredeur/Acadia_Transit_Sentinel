@@ -1,6 +1,7 @@
 import React from 'react';
 import { Route as Route2, Clock, MapPin, TrendingUp, AlertTriangle, Navigation, Users, Truck } from 'lucide-react';
 import { Route, Vehicle } from '../types';
+import { LiveTrafficIndicator } from './LiveTrafficIndicator';
 import { RiskCalculator } from '../utils/riskCalculator';
 
 interface RouteComparisonProps {
@@ -80,6 +81,9 @@ export const RouteComparison: React.FC<RouteComparisonProps> = ({
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                 <span className="text-sm text-gray-600 dark:text-gray-300">{route.estimatedTime} min</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <LiveTrafficIndicator segment={route.segments[0]} />
               </div>
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-gray-500 dark:text-gray-400" />

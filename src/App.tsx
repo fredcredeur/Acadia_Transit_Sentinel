@@ -7,7 +7,6 @@ import { CriticalPoints } from './components/CriticalPoints';
 import { RouteInput } from './components/RouteInput';
 import { DarkModeToggle } from './components/DarkModeToggle';
 import { Vehicle, Route, StopLocation } from './types';
-import { mockRoutes } from './data/mockRoutes';
 import { RouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
 
