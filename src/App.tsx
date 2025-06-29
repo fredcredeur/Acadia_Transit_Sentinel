@@ -60,7 +60,6 @@ function App() {
     try {
       const routeAnalysisService = new RouteAnalysisService();
       
-      // Use the stops parameter if provided, otherwise fall back to current state
       const stopsToUse = stops || [];
       
       console.log('Analyzing route with:', {
@@ -73,7 +72,7 @@ function App() {
         origin,
         destination,
         vehicle,
-        stops: stopsToUse, // Use the parameter
+        stops: stops || [], // Use the parameter passed from RouteInput
         avoidHighways: false,
         avoidTolls: false
       });
@@ -86,7 +85,7 @@ function App() {
       setLastAnalyzedDestination(destination);
       
       // Update the stops state to match what was actually analyzed
-      setStops(stopsToUse);
+      setStops(stops || []);
       
     } catch (err) {
       console.error('Route analysis failed:', err);
