@@ -5,9 +5,13 @@ const STORAGE_KEY = 'acadia-saved-locations';
 
 export const useSavedLocations = () => {
   const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Load saved locations from localStorage on mount
   useEffect(() => {
+    setIsLoading(true);
+    setError(null);
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -20,6 +24,9 @@ export const useSavedLocations = () => {
       }
     } catch (error) {
       console.error('Failed to load saved locations:', error);
+      setError('Failed to load saved locations.');
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
@@ -72,13 +79,25 @@ export const useSavedLocations = () => {
     );
   };
 
+  const clearAllLocations = () => {
+    setSavedLocations([]);
+  };
+
+  const exportLocations = () => {
+    return JSON.stringify(savedLocations, null, 2);
+  };
+
   return {
     savedLocations,
+    isLoading,
+    error,
     addLocation,
     updateLocation,
     deleteLocation,
     markAsUsed,
     getLocationsByCategory,
     searchLocations,
+    clearAllLocations,
+    exportLocations,
   };
 };
