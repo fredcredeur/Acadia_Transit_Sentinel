@@ -115,14 +115,13 @@ export class RouteAnalysisService {
       console.log('Prepared waypoints for Google Maps:', waypoints);
 
       // Get routes from Google Maps with enhanced error handling
-      const routeResponse = await this.googleMapsService.getRoutes({
+      const routeResponse = await this.googleMapsService.getVehicleAwareRoutes({
         origin: request.origin,
         destination: request.destination,
         waypoints: waypoints.length > 0 ? waypoints : undefined,
-        travelMode: google.maps.TravelMode.DRIVING,
+        vehicle: request.vehicle,
         avoidHighways: request.avoidHighways,
-        avoidTolls: request.avoidTolls,
-        departureTime: new Date() // 🚦 REQUEST LIVE TRAFFIC
+        avoidTolls: request.avoidTolls
       });
 
       console.log('Google Maps returned', routeResponse.routes.length, 'routes');
