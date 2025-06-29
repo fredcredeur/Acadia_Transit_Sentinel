@@ -48,7 +48,7 @@ function App() {
     setStops(newStops);
   };
 
-  const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[]) => {
+  const handleRouteAnalysis = async (origin: string, destination: string) => {
     if (!useRealData) {
       setError('Google Maps integration requires API key configuration.');
       return;
@@ -63,7 +63,7 @@ function App() {
         origin,
         destination,
         vehicle,
-        stops,
+        stops, // Use the stops state from App.tsx
         avoidHighways: false,
         avoidTolls: false
       });
