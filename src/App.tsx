@@ -48,42 +48,53 @@ function App() {
     setStops(newStops);
   };
 
-  const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[]) => {
-    if (!useRealData) {
-      setError('Google Maps integration requires API key configuration.');
-      return;
-    }
+const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[]) => {
+  if (!useRealData) {
+    setError('Google Maps integration requires API key configuration.');
+    return;
+  }
 
-    setIsAnalyzing(true);
-    setError(null);
+  setIsAnalyzing(true);
+  setError(null);
 
-    try {
-      const routeAnalysisService = new RouteAnalysisService();
-      const stopsToUse = stops || [];
-      const result = await routeAnalysisService.analyzeRoutes({
-        origin,
-        destination,
-        vehicle,
-        stops: stopsToUse, // Use the parameter
-        avoidHighways: false,
-        avoidTolls: false
-      });
+  try {
+    const routeAnalysisService = new RouteAnalysisService();
+    
+    // Use the stops parameter if provided, otherwise fall back to current state
+    const stopsToUse = stops || [];
+    
+    console.log('Analyzing route with:', {
+      origin,
+      destination, 
+      stops: stopsToUse.map(s => ({ address: s.address, order: s.order }))
+    });
+    
+    const result = await routeAnalysisService.analyzeRoutes({
+      origin,
+      destination,
+      vehicle,
+      stops: stopsToUse, // Use the parameter
+      avoidHighways: false,
+      avoidTolls: false
+    });
 
-      setRoutes(result.routes);
-      setSelectedRouteId(result.recommendedRouteId);
-      // setCurrentView('details'); // Removed automatic switch to details view
-      
-      // Store the successfully analyzed addresses and stops
-      setLastAnalyzedOrigin(origin);
-      setLastAnalyzedDestination(destination);
-      setStops(stopsToUse); // Update state to match what was analyzed
-    } catch (err) {
-      console.error('Route analysis failed:', err);
-      setError(err instanceof Error ? err.message : 'Failed to analyze routes. Please try again.');
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
+    setRoutes(result.routes);
+    setSelectedRouteId(result.recommendedRouteId);
+    
+    // Store the successfully analyzed addresses and stops
+    setLastAnalyzedOrigin(origin);
+    setLastAnalyzedDestination(destination);
+    
+    // Update the stops state to match what was actually analyzed
+    setStops(stopsToUse);
+    
+  } catch (err) {
+    console.error('Route analysis failed:', err);
+    setError(err instanceof Error ? err.message : 'Failed to analyze routes. Please try again.');
+  } finally {
+    setIsAnalyzing(false);
+  }
+};
 
   const getRouteDisplayText = () => {
     if (!lastAnalyzedOrigin || !lastAnalyzedDestination) return '';
