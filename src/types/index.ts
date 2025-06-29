@@ -31,6 +31,7 @@ export interface Route {
   overallRisk: number;
   criticalPoints: CriticalPoint[];
   waypoints?: string[]; // Added waypoints support
+  stops?: StopLocation[];
 }
 
 export interface CriticalPoint {

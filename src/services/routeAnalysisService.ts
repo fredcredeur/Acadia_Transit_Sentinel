@@ -241,7 +241,8 @@ export class RouteAnalysisService {
       estimatedTime: totalTimeWithStops, // Include stop time in total
       overallRisk: 0, // Will be calculated by RiskCalculator
       criticalPoints,
-      waypoints: waypoints.length > 0 ? waypoints : undefined
+      waypoints: waypoints.length > 0 ? waypoints : undefined,
+      stops
     };
   }
 

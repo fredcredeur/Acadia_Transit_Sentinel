@@ -1,4 +1,4 @@
-import { Vehicle, RouteSegment, Route } from '../types';
+import { Vehicle, RouteSegment, Route, StopLocation } from '../types';
 
 export interface TurnAnalysis {
   angle: number;
@@ -57,6 +57,13 @@ export class RiskCalculator {
       (turnRisk * this.WEIGHTS.turnComplexity);
 
     return Math.min(Math.max(riskScore, 0), 100);
+  }
+
+  static calculateStopRisk(stop: StopLocation, vehicle: Vehicle): number {
+    let risk = (stop.estimatedStopTime || 15) * 0.5; // Base risk on stop time
+    const sizeMultiplier = this.getVehicleSizeMultiplier(vehicle);
+    risk *= sizeMultiplier;
+    return Math.min(risk, 100);
   }
 
   static calculateDetailedRisk(segment: RouteSegment, vehicle: Vehicle): RiskBreakdown {
@@ -126,8 +133,12 @@ export class RiskCalculator {
       if (risk > 60) return risk * 1.15; // High risk segments get 15% more weight
       return risk;
     });
-    
-    return Math.min(weightedRisks.reduce((sum, risk) => sum + risk, 0) / weightedRisks.length, 100);
+
+    const stopRisks = route.stops?.map((stop: StopLocation) => this.calculateStopRisk(stop, vehicle)) || [];
+    const totalRisk = weightedRisks.reduce((sum: number, risk: number) => sum + risk, 0) + stopRisks.reduce((sum: number, risk: number) => sum + risk, 0);
+    const totalItems = weightedRisks.length + stopRisks.length;
+
+    return totalItems > 0 ? Math.min(totalRisk / totalItems, 100) : 0;
   }
 
   static compareRoutes(routes: Route[], vehicle: Vehicle): Array<Route & { 
