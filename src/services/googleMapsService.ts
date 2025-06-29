@@ -1,9 +1,6 @@
 import { Loader } from '@googlemaps/js-api-loader';
-
-export interface GoogleMapsConfig {
-  apiKey: string;
-  libraries: string[];
-}
+import { Vehicle, VehicleClass, RoutingConstraints } from '../types';
+import { VehicleClassificationService } from './vehicleClassificationService';
 
 export interface RouteRequest {
   origin: string;
@@ -440,5 +437,271 @@ export class GoogleMapsService {
     const hasKey = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
     console.log('Has API key:', hasKey);
     return hasKey;
+  }
+
+  public async reverseGeocode(lat: number, lng: number): Promise<google.maps.GeocoderResult[]> {
+    if (!this.geocoder) {
+      throw new Error('Geocoder not initialized');
+    }
+
+    return new Promise((resolve, reject) => {
+      this.geocoder!.geocode({ location: { lat, lng } }, (results, status) => {
+        if (status === google.maps.GeocoderStatus.OK && results) {
+          resolve(results);
+        } else {
+          reject(new Error(`Reverse geocoding failed with status: ${status}`));
+        }
+      });
+    });
+  }
+  
+  public async getVehicleAwareRoutes(request: {
+    origin: string;
+    destination: string;
+    waypoints?: string[];
+    vehicle: Vehicle;
+    avoidHighways?: boolean;
+    avoidTolls?: boolean;
+  }): Promise<google.maps.DirectionsResult> {
+    
+    const vehicleClass = VehicleClassificationService.classifyVehicle(request.vehicle);
+    const constraints = VehicleClassificationService.getRoutingConstraints(vehicleClass);
+    
+    console.log('🚗 Vehicle Classification:', vehicleClass.type);
+    console.log('🛣️ Routing Constraints:', constraints);
+    
+    // For large vehicles that require block routing, modify the approach
+    if (constraints.preferLoops && request.waypoints && request.waypoints.length > 0) {
+      return this.getBlockRoutingWithStops(request, vehicleClass);
+    }
+    
+    // Standard routing with vehicle constraints
+    return this.getConstrainedRoutes(request, constraints);
+  }
+  
+  private async getBlockRoutingWithStops(request: {
+    origin: string;
+    destination: string;
+    waypoints?: string[];
+    vehicle: Vehicle;
+    avoidHighways?: boolean;
+    avoidTolls?: boolean;
+  }, vehicleClass: VehicleClass): Promise<google.maps.DirectionsResult> {
+    
+    console.log('🔄 Using block routing for large vehicle');
+    
+    // For buses/large trucks, create a route that goes around blocks
+    // instead of requiring U-turns at stops
+    
+    const allPoints = [request.origin, ...(request.waypoints || []), request.destination];
+    const optimizedWaypoints = await this.optimizeWaypointsForBlockRouting(allPoints, vehicleClass);
+    
+    return this.getConstrainedRoutes({
+      ...request,
+      waypoints: optimizedWaypoints
+    }, VehicleClassificationService.getRoutingConstraints(vehicleClass));
+  }
+  
+  private async optimizeWaypointsForBlockRouting(
+    points: string[], 
+    vehicleClass: VehicleClass
+  ): Promise<string[]> {
+    console.log('🧭 Optimizing waypoints for block routing...');
+    
+    if (points.length <= 2) return points.slice(1, -1); // Remove origin/destination
+    
+    // For each waypoint, try to find a nearby point that allows 
+    // for easier block navigation
+    const optimizedPoints: string[] = [];
+    
+    for (let i = 1; i < points.length - 1; i++) {
+      const waypoint = points[i];
+      
+      try {
+        // Geocode the waypoint to get coordinates
+        const geocodeResults = await this.geocodeAddress(waypoint);
+        if (geocodeResults.length > 0) {
+          const location = geocodeResults[0].geometry.location;
+          
+          // For large vehicles, try to find a point that's on a corner
+          // or intersection that allows for easier turning
+          const optimizedPoint = await this.findOptimalApproachPoint(
+            location.lat(), 
+            location.lng(),
+            vehicleClass
+          );
+          
+          optimizedPoints.push(optimizedPoint || waypoint);
+        } else {
+          optimizedPoints.push(waypoint);
+        }
+      } catch (error) {
+        console.warn('Could not optimize waypoint:', waypoint);
+        optimizedPoints.push(waypoint);
+      }
+    }
+    
+    return optimizedPoints;
+  }
+  
+  private async findOptimalApproachPoint(
+    lat: number, 
+    lng: number, 
+    vehicleClass: VehicleClass
+  ): Promise<string | null> {
+    
+    // For large vehicles, look for nearby intersections or corners
+    // that would allow for easier block-style navigation
+    
+    const radius = vehicleClass.type === 'bus' ? 200 : 150; // meters
+    const searchPoints = [
+      { lat: lat + 0.001, lng: lng }, // North
+      { lat: lat - 0.001, lng: lng }, // South  
+      { lat: lat, lng: lng + 0.001 }, // East
+      { lat: lat, lng: lng - 0.001 }, // West
+      { lat: lat + 0.0007, lng: lng + 0.0007 }, // Northeast corner
+      { lat: lat - 0.0007, lng: lng + 0.0007 }, // Southeast corner
+      { lat: lat - 0.0007, lng: lng - 0.0007 }, // Southwest corner
+      { lat: lat + 0.0007, lng: lng - 0.0007 }, // Northwest corner
+    ];
+    
+    // Return the first viable alternative point
+    // In a full implementation, this would use Google Roads API
+    // to find actual intersection points
+    for (const point of searchPoints) {
+      try {
+        const reverseGeocode = await this.reverseGeocode(point.lat, point.lng);
+        if (reverseGeocode.length > 0) {
+          return reverseGeocode[0].formatted_address;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+    
+    return null;
+  }
+  
+  private async getConstrainedRoutes(request: {
+    origin: string;
+    destination: string;
+    waypoints?: string[];
+    avoidHighways?: boolean;
+    avoidTolls?: boolean;
+  }, constraints: RoutingConstraints): Promise<google.maps.DirectionsResult> {
+    
+    console.log('🚦 Applying routing constraints:', constraints);
+    
+    // Build Google Maps request with constraints
+    const directionsRequest: google.maps.DirectionsRequest = {
+      origin: request.origin,
+      destination: request.destination,
+      waypoints: request.waypoints?.map(waypoint => ({
+        location: waypoint,
+        stopover: true
+      })) || [],
+      travelMode: google.maps.TravelMode.DRIVING,
+      avoidHighways: request.avoidHighways || constraints.avoidResidential,
+      avoidTolls: request.avoidTolls,
+      optimizeWaypoints: false, // Keep waypoint order for large vehicles
+      provideRouteAlternatives: true
+    };
+    
+    return new Promise((resolve, reject) => {
+      const directionsService = new google.maps.DirectionsService();
+      
+      directionsService.route(directionsRequest, (result, status) => {
+        if (status === google.maps.DirectionsStatus.OK && result) {
+          
+          // Filter routes based on vehicle constraints
+          const filteredRoutes = this.filterRoutesByConstraints(result.routes, constraints);
+          
+          if (filteredRoutes.length > 0) {
+            result.routes = filteredRoutes;
+            resolve(result);
+          } else {
+            reject(new Error('No suitable routes found for this vehicle type. Consider using a smaller vehicle or different addresses.'));
+          }
+        } else {
+          reject(new Error(`Directions request failed: ${status}`));
+        }
+      });
+    });
+  }
+  
+  private filterRoutesByConstraints(
+    routes: google.maps.DirectionsRoute[], 
+    constraints: RoutingConstraints
+  ): google.maps.DirectionsRoute[] {
+    
+    return routes.filter(route => {
+      // Check each leg and step for constraint violations
+      for (const leg of route.legs) {
+        for (const step of leg.steps) {
+          const instructions = step.instructions.toLowerCase();
+          
+          // Check for U-turn violations
+          if (constraints.avoidUTurns && this.containsUTurn(instructions)) {
+            console.log('❌ Route rejected: Contains U-turn');
+            return false;
+          }
+          
+          // Check for sharp turn violations  
+          if (constraints.avoidSharpTurns && this.containsSharpTurn(instructions, constraints.maxTurnAngle)) {
+            console.log('❌ Route rejected: Contains sharp turn');
+            return false;
+          }
+          
+          // Check for residential area violations
+          if (constraints.avoidResidential && this.isResidentialArea(instructions)) {
+            console.log('❌ Route rejected: Goes through residential area');
+            return false;
+          }
+        }
+      }
+      
+      console.log('✅ Route approved for vehicle constraints');
+      return true;
+    });
+  }
+  
+  private containsUTurn(instructions: string): boolean {
+    const uTurnIndicators = [
+      'u-turn', 'u turn', 'make a u-turn', 'turn around',
+      'reverse direction', 'head back', 'return'
+    ];
+    
+    return uTurnIndicators.some(indicator => 
+      instructions.includes(indicator)
+    );
+  }
+  
+  private containsSharpTurn(instructions: string, maxAngle: number): boolean {
+    if (maxAngle >= 180) return false; // No restrictions
+    
+    const sharpTurnIndicators = [
+      'sharp turn', 'sharp left', 'sharp right',
+      'hairpin', 'tight turn', 'steep turn'
+    ];
+    
+    // If max angle is 90 degrees, avoid any "sharp" language
+    if (maxAngle <= 90) {
+      return sharpTurnIndicators.some(indicator => 
+        instructions.includes(indicator)
+      );
+    }
+    
+    return false;
+  }
+  
+  private isResidentialArea(instructions: string): boolean {
+    const residentialIndicators = [
+      'residential', 'neighborhood', 'subdivision',
+      'cul-de-sac', 'dead end', 'private road'
+    ];
+    
+    return residentialIndicators.some(indicator => 
+      instructions.includes(indicator)
+    );
   }
 }

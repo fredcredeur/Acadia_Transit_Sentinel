@@ -4,6 +4,27 @@ export interface Vehicle {
   width: number; // feet
 }
 
+export interface VehicleClass {
+  type: 'passenger' | 'delivery' | 'bus' | 'truck' | 'oversized';
+  canMakeUTurns: boolean;
+  requiresBlockRouting: boolean;
+  minTurningRadius: number; // feet
+  maxTurnAngle: number; // degrees, 180 = can do U-turn
+  avoidResidential: boolean;
+  avoidNarrowStreets: boolean;
+  preferTruckRoutes: boolean;
+}
+
+export interface RoutingConstraints {
+  avoidUTurns: boolean;
+  avoidSharpTurns: boolean;
+  avoidResidential: boolean;
+  avoidNarrowStreets: boolean;
+  preferLoops: boolean; // For block-making routes
+  minRoadWidth: number;
+  maxTurnAngle: number;
+}
+
 export interface RouteSegment {
   id: string;
   startLat: number;
