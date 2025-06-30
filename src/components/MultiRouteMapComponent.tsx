@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Route, Vehicle } from '../types';
 import { GoogleMapsService } from '../services/googleMapsService';
 import { RiskCalculator } from '../utils/riskCalculator';
-import { Eye, EyeOff, Navigation, Clock, AlertTriangle } from 'lucide-react';
+import { Eye, EyeOff, Navigation, Clock, AlertTriangle } from 'lucide-react';import { Eye, EyeOff, Navigation, Clock, AlertTriangle } from 'lucide-react';
+
 
 interface MultiRouteMapComponentProps {
   routes: Route[];
@@ -19,23 +20,22 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   onRouteSelect,
   className = ''
 }) => {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const [map, setMap] = useState<google.maps.Map | null>(null);
+  const [map, fe M=p]f<HTMLStatiElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [routeRenderers, setRouteRenderers] = useState<Map<string, google.maps.DirectionsRenderer>>(new Map());
-  const [criticalPointMarkers, setCriticalPointMarkers] = useState<google.maps.Marker[]>([]);
-  const [riskOverlays, setRiskOverlays] = useState<google.maps.Polyline[]>([]);
-  const [routeColors] = useState<string[]>(['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#9333ea']);
+  const [rrutuRendeterndererRout RendeserouteRenderers]Map<string, google.maps.DirectionsRenderer>>(new Map());= useState<Map<string, google.maps.DirectionsRenderer>>(new Map());
+  constc[criticalPointMarkers,osetCriticslPointMat [cr]t= useState<icalPointMarkers, []>(se)tCriticalPointMarkers] = useState<google.maps.Marker[]>([]);
+cocsnst [riskOverta s, setRrskOvsrlayk] =vuseState<erlays, setRiskOverlayone<ri
+  useEff[ect(() => {]useState<string[]>(]);
 
   useEffect(() => {
     initializeMap();
-  }, []);
-
-  useEffect(() => {
+  }, [)
+    initializeMap();
+  }, []);() => {
     // Clear all overlays when component unmounts or map changes
-    return () => {
-      criticalPointMarkers.forEach(marker => marker.setMap(null));
+    return 
+  criticalPontMarkers.orEach(marker =>marker.setMapnull));
       riskOverlays.forEach(overlay => overlay.setMap(null));
     };
   }, [map]);
@@ -47,127 +47,127 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   }, [map, routes, selectedRouteId]);
 
   const initializeMap = async () => {
-    if (!mapRef.current) return;
+    if (
 
     try {
-      setIsLoading(true);
-      const googleMapsService = GoogleMapsService.getInstance();
-      await googleMapsService.initialize();
+    useEffect(() => {
+      const googleMapsService = // Clear all overlays when comp;onent unmounts or map changes
+    reawait googleMapsServiceturn () => {;
+Markers.forEach(marker => marker.setMap(null));
+      skOverlayInstances.forEach(overlay => overlay.setMap(nll));
+    };
+  }, [ma);
 
-      const mapInstance = new google.maps.Map(mapRef.current, {
-        zoom: 12,
-        center: { lat: 40.7128, lng: -74.0060 },
-        mapTypeId: google.maps.MapTypeId.ROADMAP,
-        styles: [
+  useEfft(() => {
+          
+           
+           
+           
+    if (  }
+onst inp]nc () => {
+ (!meu
+
+    trIssac)
+      nst googleMapsService = GoogleMapsService.getInstance();
+    a rr
+       pom: 12,Please cyour  configuration
+      console.error('Map initialization error:', err ;center: { lat: 40.7128, lng: -74.0060 },
+    }  mapTyp:{
+o     ogle.maps.MapTypeIdROADMAP,
+     
+  }styles: [
           {
-            featureType: 'poi',
-            elementType: 'labels',
-            stylers: [{ visibility: 'off' }]
-          }
-        ]
-      });
+  con t displayS l   edRoute = async  eatureType: 'poi',
+        !s',||!  l rnisibility: 'off' }]
 
-      setMap(mapInstance);
-      setError(null);
-    } catch (err) {
-      setError('Failed to load Google Maps. Please check your API key configuration.');
-      console.error('Map initialization error:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    // Clear all  xising rnrersmakr,ado
+    r utsRendeenstance);rendererrenderer
+    setR utsRendeeerr(new Mar());
+    criticanPol)tMark;rmarkermarker
+    } cChitica PointM((
+    aiskOv r{ays.forEah(vrl  verlay.eetMg(()ll))
+    eisk[]
 
   const displaySelectedRoute = async () => {
     if (!map || !selectedRouteId) return;
 
-    // Clear all existing renderers, markers, and overlays
-    routeRenderers.forEach(renderer => renderer.setMap(null));
-    setRouteRenderers(new Map());
-    criticalPointMarkers.forEach(marker => marker.setMap(null));
-    setCriticalPointMarkers([]);
-    riskOverlays.forEach(overlay => overlay.setMap(null));
-    setRiskOverlays([]);
+    // ClegoogleMapsServaceallGoeglsMaptServiceigetI stancee);
 
-    const selected = routes.find(r => r.id === selectedRouteId);
-    if (!selected) return;
-
-    const googleMapsService = GoogleMapsService.getInstance();
+    try {
+     sconstmfiastSegmentr and overl.segmens[0]
+      routeRdastSegmentersselecred.segmEntenselectee.segmenrr.setMap - 1(null));
+       Map());
+    crctPst origMr =r`$sfirfoSegmcnt.rkaetLM(})${fir;Sment.starLg`;
+     sconstedtslPiatOer =a`$yva t>egoenysendp)t}${Segmn.ndLn`    const selected = routes.find(r => r.id === selectedRouteId);
+selected) return;
+eRpnsg
+    const googI
 
     try {
       const firstSegment = selected.segments[0];
       const lastSegment = selected.segments[selected.segments.length - 1];
       
       const origin = `${firstSegment.startLat},${firstSegment.startLng}`;
-      const destination = `${lastSegment.endLat},${lastSegment.endLng}`;
 
-      const routeResponse = await googleMapsService.getRoutes({
-        origin,
-        destination,
-        waypoints: selected.waypoints,
-        travelMode: google.maps.TravelMode.DRIVING,
-        avoidHighways: false,
-        avoidTolls: false
-      });
-
-      if (routeResponse.routes.length > 0) {
-        const routeIndex = routes.findIndex(r => r.id === selectedRouteId);
-        const color = routeColors[routeIndex % routeColors.length];
-        
-        const renderer = new google.maps.DirectionsRenderer({
-          suppressMarkers: false,
-          draggable: false,
-          polylineOptions: {
-            strokeColor: color,
-            strokeOpacity: 1.0,
-            strokeWeight: 8,
-            zIndex: 10
-          },
-          markerOptions: {
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 8,
-              fillColor: color,
-              fillOpacity: 1,
-              strokeColor: '#FFFFFF',
-              strokeWeight: 2
+      consroute espdnse.roestination =>{las{t.endLat},${lastSegment.endLng}`;
+  tIndex= r.fiiIngex(ri=> n.,d=== seedRuId);
+          destc,orrwaypCcy[rouIndex%roColorsleng]
+                travelMode: google.maps.TravelMode.DRIVING,
+          avoireddHrer = : wlse,DrectiosRnderer({
+      i   supprTsslls: falsfl,
+    ragabl: l
+      if  p(lylireOpuRone:p{
+n           .troreoo.ng:  o)or
+           nsttokeOpac ty:I1.d,= routes.findIndex(r => r.id === selectedRouteId);
+         coolo okrWgihh]:8,
+         zIe: 10
+  },
+       coerarkerOogaonD:({
+            scoa:
+           drleath:SymbPath.CIRCLE,
+          polyscileOp8
+            stfilllor: color
+            stfillacity: 1.1
+            strokeWgColor8,'#FFFFFF'
+            zIstrokeW:ight10
             }
-          }
-        });
-
+  },    }
+      marke
+rOptions: {
         renderer.setMap(map);
-        renderer.setDirections(routeResponse);
+        reiderer.setDirccti:(roteRense
 
-        // Add click listener to route polyline
-        google.maps.event.addListener(renderer, 'click', () => {
-          onRouteSelect(selected.id);
-        });
+        // Add click listener to route   paline
+        google.maps.eventth: google.marenderer, ps.SymbolPath. {
+  C       IRCLE,
+                fillOpacity: 1,
+              strokeColor: '#FFFFFF',
+           Rout Ren eresrev ewMap(prev).t(d, d));
 
-        setRouteRenderers(prev => new Map(prev).set(selected.id, renderer));
+        //}Add)rute-pecfcvrly forik viulizaio
+wtiM(ddRueikOv(sectedueRiris(pduroucts[0], cotord)rInex
+       );
 
+      // Fisderp to phoweth peeddcedrte
         // Add route-specific overlays for risk visualization
-        await addRouteRiskOverlays(selected, routeResponse.routes[0], color, routeIndex);
-      }
-
-      // Fit map to show the selected route
-      const bounds = new google.maps.LatLngBounds();
-      selected.segments.forEach(segment => {
-        bounds.extend(new google.maps.LatLng(segment.startLat, segment.startLng));
-        bounds.extend(new google.maps.LatLng(segment.endLat, segment.endLng));
-      });
+        await addRouteRiskOverlayegments(selected, routeResponse.routes[0], color, routeIndex);
+      }egmentegment
+egmentegment
+      // 
       
-      if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
-      }
-
-    } catch (error) {
-      setError('Failed to display selected route. Please check your API key and route data.');
-      console.error('Failed to display selected route:', error);
-    }
-  };
-
-  const addRouteRiskOverlays = async (
-    route: Route, 
-    googleRoute: google.maps.DirectionsRoute, 
+      if (!bounds.isEmpty()) {Fit map to show the selected route
+        const bounds = new google.maps.LatLngBounds();
+    ts}
+gments.forEach(segment => {
+    } cat h (.exte( {ew google.maps.LatLng(segment.startLat, segment.startLng));
+        bounds.extend(new google. selectedmaps.La Pleasetcng(styourdLat, se and route datagment.endLng));
+      console.  ma ('Fail d }ospyslct:', )
+      } catch (error) {
+ t};
+rror('Failed to display selected route. Please check your API key and route data.');
+ nson.t eddRoudeR skOtorlay }=ayc
+r:Ro,
+googRou:ggu. gos.Dirgmtion.Rt,
     baseColor: string,
     routeIndex: number
   ) => {
