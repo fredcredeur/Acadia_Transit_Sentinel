@@ -25,6 +25,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
 }) => {
   const [origin, setOrigin] = useState(initialOrigin);
   const [destination, setDestination] = useState(initialDestination);
+  const [isLoop, setIsLoop] = useState(false); // New state for loop route
   const [showSavedLocations, setShowSavedLocations] = useState(false);
   const [locationInputTarget, setLocationInputTarget] = useState<'origin' | 'destination' | null>(null);
   const [validationErrors, setValidationErrors] = useState<{origin?: string; destination?: string; stops?: string}>({});
@@ -145,8 +146,15 @@ export const RouteInput: React.FC<RouteInputProps> = ({
     // Proceed with route analysis
     if (origin.trim() && destination.trim() && !isLoading) {
       console.log('Calling route analysis with stops...');
-      const validStops = stops.filter(stop => stop.address.trim());
-      onRouteRequest(origin.trim(), destination.trim(), validStops.length > 0 ? validStops : undefined);
+      let finalStops = stops.filter(stop => stop.address.trim());
+
+      if (isLoop) {
+        // Add origin as the last stop for a loop route
+        finalStops = [...finalStops, { id: 'loop-return', address: origin.trim(), order: finalStops.length }];
+        console.log('Loop route enabled. Added origin as final stop:', origin.trim());
+      }
+
+      onRouteRequest(origin.trim(), destination.trim(), finalStops.length > 0 ? finalStops : undefined);
     }
   };
 
@@ -281,6 +289,21 @@ export const RouteInput: React.FC<RouteInputProps> = ({
                   {validationErrors.destination}
                 </div>
               )}
+            </div>
+
+            {/* Loop Route Checkbox */}
+            <div className="flex items-center mt-2">
+              <input
+                type="checkbox"
+                id="loopRoute"
+                checked={isLoop}
+                onChange={(e) => setIsLoop(e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:checked:bg-blue-600 dark:focus:ring-blue-600"
+                disabled={isLoading || apiStatus !== 'ready'}
+              />
+              <label htmlFor="loopRoute" className="ml-2 block text-sm text-gray-900 dark:text-gray-200">
+                Loop route (return to start)
+              </label>
             </div>
 
             {/* Stops Error Display */}

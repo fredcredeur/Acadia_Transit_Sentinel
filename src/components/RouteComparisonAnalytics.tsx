@@ -53,9 +53,21 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
   const fastest = routeMetrics.reduce((best, current) => 
     current.estimatedTime < best.estimatedTime ? current : best
   );
-  const safest = routeMetrics.reduce((best, current) => 
-    current.riskScore < best.riskScore ? current : best
-  );
+  const safest = routeMetrics.reduce((best, current) => {
+    // If current is significantly safer, choose it
+    if (current.riskScore < best.riskScore - 2) { // 2% threshold
+      return current;
+    }
+    // If best is significantly safer, keep it
+    if (best.riskScore < current.riskScore - 2) { // 2% threshold
+      return best;
+    }
+    // If risk scores are very close, use critical points as tie-breaker
+    if (current.criticalPoints < best.criticalPoints) {
+      return current;
+    }
+    return best;
+  });
   const shortest = routeMetrics.reduce((best, current) => 
     current.totalDistance < best.totalDistance ? current : best
   );
