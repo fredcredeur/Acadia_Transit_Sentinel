@@ -294,7 +294,7 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
                             style={{ backgroundColor: routeColor }}
                           />
                           <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {route.name}
+                            Route {index + 1}
                           </span>
                         </div>
                         <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -364,7 +364,7 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
                 <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-purple-200 dark:border-purple-600">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-green-700 dark:text-green-300">
-                      🏆 Recommended: {safest.name}
+                      🏆 Recommended: Route {routes.findIndex(r => r.id === safest.id) + 1}
                     </span>
                     <span className="text-sm px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
                       Best Overall
@@ -382,7 +382,7 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
                   <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-600">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium text-blue-700 dark:text-blue-300">
-                        ⚡ Alternative: {fastest.name}
+                      ⚡ Alternative: Route {routes.findIndex(r => r.id === fastest.id) + 1}
                       </span>
                       <span className="text-sm px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
                         Fastest
@@ -458,7 +458,7 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
                       />
                       <div className="flex-1">
                         <div className="font-medium text-gray-900 dark:text-white mb-1">
-                          {route.name}
+                          Route {routes.findIndex(r => r.id === route.id) + 1}
                         </div>
                         <div className="text-sm text-gray-600 dark:text-gray-400">
                           {recommendation}
