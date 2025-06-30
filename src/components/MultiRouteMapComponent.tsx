@@ -298,10 +298,10 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
 
   // Update styles when selection changes
   useEffect(() => {
-    routes.forEach(route => {
-      updateRouteStyle(route.id, route.id === selectedRouteId);
-    });
-  }, [selectedRouteId, routeRenderers]);
+    if (map && routes.length > 0) {
+      displayAllRoutes();
+    }
+  }, [selectedRouteId, map, routes]);
 
   if (error) {
     return (
