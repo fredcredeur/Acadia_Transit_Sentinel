@@ -2,8 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Route, Vehicle } from '../types';
 import { GoogleMapsService } from '../services/googleMapsService';
 import { RiskCalculator } from '../utils/riskCalculator';
-import { Eye, EyeOff, Navigation, Clock, AlertTriangle } from 'lucide-react';import { Eye, EyeOff, Navigation, Clock, AlertTriangle } from 'lucide-react';
-
+import { Eye, EyeOff, Navigation, Clock, AlertTriangle } from 'lucide-react';
 
 interface MultiRouteMapComponentProps {
   routes: Route[];
@@ -20,25 +19,25 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   onRouteSelect,
   className = ''
 }) => {
-  const [map, fe M=p]f<HTMLStatiElement>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [map, setMap] = useState<google.maps.Map | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [rrutuRendeterndererRout RendeserouteRenderers]Map<string, google.maps.DirectionsRenderer>>(new Map());= useState<Map<string, google.maps.DirectionsRenderer>>(new Map());
-  constc[criticalPointMarkers,osetCriticslPointMat [cr]t= useState<icalPointMarkers, []>(se)tCriticalPointMarkers] = useState<google.maps.Marker[]>([]);
-cocsnst [riskOverta s, setRrskOvsrlayk] =vuseState<erlays, setRiskOverlayone<ri
-  useEff[ect(() => {]useState<string[]>(]);
+  const [routeRenderers, setRouteRenderers] = useState<Map<string, google.maps.DirectionsRenderer>>(new Map());
+  const [criticalPointMarkers, setCriticalPointMarkers] = useState<google.maps.Marker[]>([]);
+  const [riskOverlays, setRiskOverlays] = useState<google.maps.Polyline[]>([]);
 
   useEffect(() => {
     initializeMap();
-  }, [)
-    initializeMap();
-  }, []);() => {
+  }, []);
+
+  useEffect(() => {
     // Clear all overlays when component unmounts or map changes
-    return 
-  criticalPontMarkers.orEach(marker =>marker.setMapnull));
+    return () => {
+      criticalPointMarkers.forEach(marker => marker.setMap(null));
       riskOverlays.forEach(overlay => overlay.setMap(null));
     };
-  }, [map]);
+  }, [map, criticalPointMarkers, riskOverlays]); // Added dependencies
 
   useEffect(() => {
     if (map && routes.length > 0 && selectedRouteId) {
@@ -47,127 +46,124 @@ cocsnst [riskOverta s, setRrskOvsrlayk] =vuseState<erlays, setRiskOverlayone<ri
   }, [map, routes, selectedRouteId]);
 
   const initializeMap = async () => {
-    if (
+    if (!mapRef.current) {
+      setError('Map container not found.');
+      setIsLoading(false);
+      return;
+    }
 
     try {
-    useEffect(() => {
-      const googleMapsService = // Clear all overlays when comp;onent unmounts or map changes
-    reawait googleMapsServiceturn () => {;
-Markers.forEach(marker => marker.setMap(null));
-      skOverlayInstances.forEach(overlay => overlay.setMap(nll));
-    };
-  }, [ma);
+      const googleMapsService = GoogleMapsService.getInstance();
+      await googleMapsService.initialize();
 
-  useEfft(() => {
-          
-           
-           
-           
-    if (  }
-onst inp]nc () => {
- (!meu
-
-    trIssac)
-      nst googleMapsService = GoogleMapsService.getInstance();
-    a rr
-       pom: 12,Please cyour  configuration
-      console.error('Map initialization error:', err ;center: { lat: 40.7128, lng: -74.0060 },
-    }  mapTyp:{
-o     ogle.maps.MapTypeIdROADMAP,
-     
-  }styles: [
+      const newMap = new google.maps.Map(mapRef.current, {
+        center: { lat: 40.7128, lng: -74.0060 }, // Default center, can be dynamic
+        zoom: 12,
+        mapTypeId: google.maps.MapTypeId.ROADMAP,
+        styles: [
           {
-  con t displayS l   edRoute = async  eatureType: 'poi',
-        !s',||!  l rnisibility: 'off' }]
-
-    // Clear all  xising rnrersmakr,ado
-    r utsRendeenstance);rendererrenderer
-    setR utsRendeeerr(new Mar());
-    criticanPol)tMark;rmarkermarker
-    } cChitica PointM((
-    aiskOv r{ays.forEah(vrl  verlay.eetMg(()ll))
-    eisk[]
+            featureType: 'poi',
+            stylers: [{ visibility: 'off' }]
+          }
+        ]
+      });
+      setMap(newMap);
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Map initialization error:', err);
+      setError('Failed to load Google Maps. Please check your API key and network connection.');
+      setIsLoading(false);
+    }
+  };
 
   const displaySelectedRoute = async () => {
     if (!map || !selectedRouteId) return;
 
-    // ClegoogleMapsServaceallGoeglsMaptServiceigetI stancee);
+    // Clear all existing renderers and markers
+    routeRenderers.forEach(renderer => renderer.setMap(null));
+    setRouteRenderers(new Map());
+    criticalPointMarkers.forEach(marker => marker.setMap(null));
+    setCriticalPointMarkers([]);
+    riskOverlays.forEach(overlay => overlay.setMap(null));
+    setRiskOverlays([]);
 
-    try {
-     sconstmfiastSegmentr and overl.segmens[0]
-      routeRdastSegmentersselecred.segmEntenselectee.segmenrr.setMap - 1(null));
-       Map());
-    crctPst origMr =r`$sfirfoSegmcnt.rkaetLM(})${fir;Sment.starLg`;
-     sconstedtslPiatOer =a`$yva t>egoenysendp)t}${Segmn.ndLn`    const selected = routes.find(r => r.id === selectedRouteId);
-selected) return;
-eRpnsg
-    const googI
+    const selected = routes.find(r => r.id === selectedRouteId);
+    if (!selected) {
+      setError('Selected route not found.');
+      return;
+    }
+
+    const googleMapsService = GoogleMapsService.getInstance();
 
     try {
       const firstSegment = selected.segments[0];
       const lastSegment = selected.segments[selected.segments.length - 1];
       
       const origin = `${firstSegment.startLat},${firstSegment.startLng}`;
+      const destination = `${lastSegment.endLat},${lastSegment.endLng}`;
 
-      consroute espdnse.roestination =>{las{t.endLat},${lastSegment.endLng}`;
-  tIndex= r.fiiIngex(ri=> n.,d=== seedRuId);
-          destc,orrwaypCcy[rouIndex%roColorsleng]
-                travelMode: google.maps.TravelMode.DRIVING,
-          avoireddHrer = : wlse,DrectiosRnderer({
-      i   supprTsslls: falsfl,
-    ragabl: l
-      if  p(lylireOpuRone:p{
-n           .troreoo.ng:  o)or
-           nsttokeOpac ty:I1.d,= routes.findIndex(r => r.id === selectedRouteId);
-         coolo okrWgihh]:8,
-         zIe: 10
-  },
-       coerarkerOogaonD:({
-            scoa:
-           drleath:SymbPath.CIRCLE,
-          polyscileOp8
-            stfilllor: color
-            stfillacity: 1.1
-            strokeWgColor8,'#FFFFFF'
-            zIstrokeW:ight10
-            }
-  },    }
-      marke
-rOptions: {
-        renderer.setMap(map);
-        reiderer.setDirccti:(roteRense
+      const routeIndex = routes.findIndex(r => r.id === selectedRouteId);
+      const routeColors = ['#4299E1', '#805AD5', '#38B2AC', '#ED8936', '#E53E3E']; // Example colors
+      const color = routeColors[routeIndex % routeColors.length];
 
-        // Add click listener to route   paline
-        google.maps.eventth: google.marenderer, ps.SymbolPath. {
-  C       IRCLE,
-                fillOpacity: 1,
-              strokeColor: '#FFFFFF',
-           Rout Ren eresrev ewMap(prev).t(d, d));
+      const directionsService = new google.maps.DirectionsService();
+      const directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: false,
+        draggable: false,
+        polylineOptions: {
+          strokeColor: color,
+          strokeOpacity: 1.0,
+          strokeWeight: 8,
+          zIndex: 10
+        },
+        markerOptions: {
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: color,
+            fillOpacity: 1.1,
+            strokeColor: '#FFFFFF',
+            strokeWeight: 10
+          }
+        }
+      });
 
-        //}Add)rute-pecfcvrly forik viulizaio
-wtiM(ddRueikOv(sectedueRiris(pduroucts[0], cotord)rInex
-       );
+      const routeResponse = await directionsService.route({
+        origin: origin,
+        destination: destination,
+        travelMode: google.maps.TravelMode.DRIVING,
+        avoidHighways: false,
+      });
 
-      // Fisderp to phoweth peeddcedrte
-        // Add route-specific overlays for risk visualization
-        await addRouteRiskOverlayegments(selected, routeResponse.routes[0], color, routeIndex);
-      }egmentegment
-egmentegment
-      // 
-      
-      if (!bounds.isEmpty()) {Fit map to show the selected route
-        const bounds = new google.maps.LatLngBounds();
-    ts}
-gments.forEach(segment => {
-    } cat h (.exte( {ew google.maps.LatLng(segment.startLat, segment.startLng));
-        bounds.extend(new google. selectedmaps.La Pleasetcng(styourdLat, se and route datagment.endLng));
-      console.  ma ('Fail d }ospyslct:', )
-      } catch (error) {
- t};
-rror('Failed to display selected route. Please check your API key and route data.');
- nson.t eddRoudeR skOtorlay }=ayc
-r:Ro,
-googRou:ggu. gos.Dirgmtion.Rt,
+      directionsRenderer.setDirections(routeResponse);
+      setRouteRenderers(prev => new Map(prev).set(selected.id, directionsRenderer));
+
+      // Add route-specific overlays for risk visualization
+      await addRouteRiskOverlay(selected, routeResponse.routes[0], color, routeIndex);
+
+      // Fit map to show the selected route
+      const bounds = new google.maps.LatLngBounds();
+      routeResponse.routes[0].legs.forEach(leg => {
+        leg.steps.forEach(step => {
+          step.path.forEach(point => {
+            bounds.extend(point);
+          });
+        });
+      });
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds);
+      }
+
+    } catch (error) {
+      console.error('Failed to display selected route:', error);
+      setError('Failed to display selected route. Please check your API key and route data.');
+    }
+  };
+
+  const addRouteRiskOverlay = async (
+    route: Route,
+    googleRoute: google.maps.DirectionsRoute,
     baseColor: string,
     routeIndex: number
   ) => {
@@ -357,7 +353,6 @@ googRou:ggu. gos.Dirgmtion.Rt,
                           </div>
                         </div>
                         <div className="text-center">
-                          <div className="text-gray-500 dark:text-gray-400">Critical</div>
                           <div className="font-medium text-gray-900 dark:text-white">
                             {route.criticalPoints?.length || 0}
                           </div>
