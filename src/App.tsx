@@ -14,6 +14,16 @@ import { RouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useGeolocation } from './hooks/useGeolocation';
 
+/*************  ✨ Windsurf Command ⭐  *************/
+/**
+ * The main application component.
+ *
+ * This component renders the entire application and manages state between sub-components.
+ * It also handles the Google Maps API key setup and demo mode.
+ *
+ * @returns {JSX.Element} The main application component.
+ */
+/*******  f1634025-fab1-4311-a8d9-d72c435e95a6  *******/
 function App() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const { coordinates: userLocation } = useGeolocation();
