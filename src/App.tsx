@@ -257,7 +257,7 @@ function App() {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-gray-900 dark:text-white truncate">
-                        {route.name}
+                        Route {index + 1}
                       </div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
                         {route.totalDistance}mi • {route.estimatedTime}min
