@@ -238,7 +238,7 @@ function App() {
             {routes.map((route, index) => {
               const isSelected = route.id === selectedRouteId;
               const riskScore = RiskCalculator.calculateRouteRisk(route, vehicle);
-              const routeColor = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#9333ea'][index % 5];
+              const routeColor = ['#4299E1', '#805AD5', '#38B2AC', '#ED8936', '#E53E3E'][index % 5];
               
               return (
                 <button
