@@ -1,8 +1,7 @@
-// Google Maps Style Autocomplete Input - Prioritizes live Google suggestions
-// Replace your current SmartAddressInput.tsx with this version
+// Fixed src/components/SmartAddressInput.tsx
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MapPin, CheckCircle, AlertTriangle, Star, Crosshair, Search, Loader2, Clock, Navigation } from 'lucide-react';
+import { MapPin, CheckCircle, AlertTriangle, Star, Crosshair, Search, Loader2, Clock, Navigation, AlertCircle } from 'lucide-react';
 import { SavedLocation } from '../types';
 import { useSavedLocations } from '../hooks/useSavedLocations';
 import { useGeolocation } from '../hooks/useGeolocation';
@@ -46,11 +45,13 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   const [validationStatus, setValidationStatus] = useState<'none' | 'valid' | 'warning' | 'error'>('none');
   const [validationMessage, setValidationMessage] = useState('');
   const [placesReady, setPlacesReady] = useState(false);
+  const [placesError, setPlacesError] = useState<string>('');
   
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimeoutRef = useRef<number>();
   const placesServiceRef = useRef<PlacesService | null>(null);
   const currentSearchRef = useRef<string>('');
+  const initializationAttempts = useRef<number>(0);
   
   const { savedLocations, markAsUsed } = useSavedLocations();
   const { coordinates, getCurrentLocation, isLoading: isGettingLocation } = useGeolocation();
@@ -60,19 +61,52 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     console.log(`🗺️ [${inputId.substring(0, 8)}] ${label}: ${message}`, data || '');
   };
 
-  // Initialize Places service
+  // ✅ FIXED: Enhanced Places service initialization with retries
   useEffect(() => {
     const initializePlaces = async () => {
-      try {
-        debugLog('Initializing Google Places...');
-        const placesService = PlacesService.getInstance();
-        await placesService.initialize();
-        placesServiceRef.current = placesService;
-        setPlacesReady(true);
-        debugLog('✅ Google Places ready for live autocomplete');
-      } catch (error) {
-        debugLog('❌ Google Places failed:', error);
-        setPlacesReady(false);
+      const maxAttempts = 3;
+      const attemptDelay = 1000; // 1 second between attempts
+      
+      while (initializationAttempts.current < maxAttempts) {
+        try {
+          initializationAttempts.current++;
+          debugLog(`Initializing Google Places (attempt ${initializationAttempts.current}/${maxAttempts})...`);
+          
+          const placesService = PlacesService.getInstance();
+          await placesService.initialize();
+          
+          // ✅ FIXED: Test the service to make sure it actually works
+          const diagnostics = placesService.getDiagnosticInfo();
+          debugLog('Places service diagnostics:', diagnostics);
+          
+          if (!diagnostics.hasPlacesLibrary) {
+            throw new Error('Places library not available - check Google Maps initialization');
+          }
+          
+          if (!placesService.isReady()) {
+            throw new Error('Places service not ready after initialization');
+          }
+          
+          placesServiceRef.current = placesService;
+          setPlacesReady(true);
+          setPlacesError('');
+          debugLog('✅ Google Places ready for live autocomplete');
+          break;
+          
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          debugLog(`❌ Google Places attempt ${initializationAttempts.current} failed:`, errorMessage);
+          setPlacesError(errorMessage);
+          
+          if (initializationAttempts.current < maxAttempts) {
+            debugLog(`⏳ Retrying in ${attemptDelay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, attemptDelay));
+          } else {
+            debugLog('❌ All Places initialization attempts failed');
+            setPlacesReady(false);
+            setPlacesError(`Failed to initialize Places service after ${maxAttempts} attempts: ${errorMessage}`);
+          }
+        }
       }
     };
 
@@ -88,7 +122,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     }
   }, [coordinates, onChange]);
 
-  // Live Google Places search with optimized settings
+  // ✅ FIXED: Enhanced Google Places search with better error handling
   const performGooglePlacesSearch = useCallback(async (searchQuery: string): Promise<AddressSuggestion[]> => {
     if (!placesServiceRef.current || !placesReady || searchQuery.length < 2) {
       return [];
@@ -104,11 +138,9 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       currentSearchRef.current = searchQuery;
       debugLog(`🔍 Google Places search: "${searchQuery}"`);
       
-      // Enhanced Places request for better autocomplete
       const predictions = await placesServiceRef.current.getPlacePredictions(searchQuery, {
-        types: ['geocode', 'establishment'], // Include both addresses and businesses
+        types: ['geocode', 'establishment'],
         componentRestrictions: { country: 'us' },
-        // Add Louisiana bias for better local results
         location: new google.maps.LatLng(30.2241, -92.0198), // Lafayette, LA center
         radius: 50000 // 50km radius for Louisiana focus
       });
@@ -119,7 +151,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         id: `google-${inputId}-${index}`,
         address: prediction.description,
         type: 'google' as const,
-        confidence: 1.0, // Highest confidence for live Google results
+        confidence: 1.0,
         details: {
           placeId: prediction.place_id,
           mainText: prediction.structured_formatting.main_text,
@@ -132,13 +164,27 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
 
     } catch (error) {
       debugLog('❌ Google Places search failed:', error);
+      
+      // ✅ FIXED: Try to recover from errors
+      if (error instanceof Error && error.message.includes('not initialized')) {
+        debugLog('🔄 Attempting to reinitialize Places service...');
+        try {
+          await placesServiceRef.current?.initialize();
+          setPlacesReady(true);
+          setPlacesError('');
+        } catch (reinitError) {
+          debugLog('❌ Reinitialization failed:', reinitError);
+          setPlacesError('Places service connection lost');
+        }
+      }
+      
       return [];
     } finally {
       setIsLoadingSuggestions(false);
     }
   }, [placesReady, inputId]);
 
-  // Generate suggestions with Google-first priority
+  // ✅ FIXED: Enhanced suggestion generation with fallback strategies
   const generateSuggestions = useCallback(async (input: string) => {
     if (input.length < 1) {
       setSuggestions([]);
@@ -149,14 +195,18 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     debugLog(`Generating suggestions for: "${input}"`);
     const allSuggestions: AddressSuggestion[] = [];
 
-    // 1. PRIORITY: Live Google Places suggestions (like real Google Maps)
-    if (input.length >= 2) {
-      const googleSuggestions = await performGooglePlacesSearch(input);
-      allSuggestions.push(...googleSuggestions);
-      debugLog(`Added ${googleSuggestions.length} Google suggestions`);
+    // Strategy 1: Google Places (if available)
+    if (placesReady && input.length >= 2) {
+      try {
+        const googleSuggestions = await performGooglePlacesSearch(input);
+        allSuggestions.push(...googleSuggestions);
+        debugLog(`Added ${googleSuggestions.length} Google suggestions`);
+      } catch (error) {
+        debugLog('Google Places search failed:', error);
+      }
     }
 
-    // 2. SECONDARY: Current location if relevant
+    // Strategy 2: Current location (if relevant)
     if (coordinates && input.toLowerCase().includes('current')) {
       allSuggestions.push({
         id: `current-${inputId}`,
@@ -166,40 +216,38 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       });
     }
 
-    // 3. FALLBACK: Saved locations (only if Google doesn't have enough results)
-    if (allSuggestions.length < 3) {
-      const inputLower = input.toLowerCase();
-      const savedSuggestions = savedLocations
-        .filter(loc => loc.address.toLowerCase().includes(inputLower))
-        .slice(0, 2) // Limit saved suggestions
-        .map((loc, index) => ({
-          id: `saved-${inputId}-${index}`,
-          address: loc.address,
-          type: 'saved' as const,
-          confidence: 0.7
-        }));
-      
-      allSuggestions.push(...savedSuggestions);
-      debugLog(`Added ${savedSuggestions.length} saved suggestions as fallback`);
-    }
+    // Strategy 3: Saved locations (always available as fallback)
+    const inputLower = input.toLowerCase();
+    const savedSuggestions = savedLocations
+      .filter(loc => 
+        loc.address.toLowerCase().includes(inputLower) ||
+        loc.name.toLowerCase().includes(inputLower)
+      )
+      .slice(0, allSuggestions.length < 3 ? 3 : 2)
+      .map((loc, index) => ({
+        id: `saved-${inputId}-${index}`,
+        address: loc.address,
+        type: 'saved' as const,
+        confidence: 0.7
+      }));
+    
+    allSuggestions.push(...savedSuggestions);
+    debugLog(`Added ${savedSuggestions.length} saved suggestions`);
 
-    // Sort by Google-first priority
+    // Sort by priority: Google first, then by confidence
     allSuggestions.sort((a, b) => {
-      // Google suggestions always first
       if (a.type === 'google' && b.type !== 'google') return -1;
       if (a.type !== 'google' && b.type === 'google') return 1;
-      
-      // Then by confidence
       return b.confidence - a.confidence;
     });
 
-    // Limit to 6 suggestions for clean UI (like Google Maps)
+    // Limit to 6 suggestions for clean UI
     const finalSuggestions = allSuggestions.slice(0, 6);
     setSuggestions(finalSuggestions);
     debugLog(`Final suggestions: ${finalSuggestions.length} (${finalSuggestions.filter(s => s.type === 'google').length} from Google)`);
-  }, [performGooglePlacesSearch, savedLocations, coordinates, inputId]);
+  }, [performGooglePlacesSearch, savedLocations, coordinates, inputId, placesReady]);
 
-  // Fast debounced search (shorter delay for responsive feel)
+  // Enhanced debounced search
   useEffect(() => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
@@ -209,17 +257,19 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       return;
     }
 
-    // Shorter debounce for more responsive autocomplete
+    // ✅ FIXED: Different debounce times based on Places availability
+    const debounceDelay = placesReady ? 200 : 500; // Faster when Places is ready
+
     debounceTimeoutRef.current = setTimeout(() => {
       generateSuggestions(value);
-    }, 150); // Reduced from 300ms to 150ms for faster response
+    }, debounceDelay);
 
     return () => {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [value, showSuggestions, generateSuggestions]);
+  }, [value, showSuggestions, generateSuggestions, placesReady]);
 
   // Validate address
   useEffect(() => {
@@ -240,7 +290,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       return;
     }
 
-    // Basic address validation
+    // Enhanced address validation
     const hasNumbers = /\d/.test(address);
     const hasStreetTypes = /\b(st|street|ave|avenue|blvd|rd|road|dr|drive|ln|way|ct)\b/i.test(address);
     const hasCities = /\b(lafayette|opelousas|eunice|crowley|rayne|scott|carencro|broussard)\b/i.test(address);
@@ -251,13 +301,16 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       if (hasCities && hasState) {
         setValidationStatus('valid');
         setValidationMessage('Complete address');
+      } else if (placesReady) {
+        setValidationStatus('warning');
+        setValidationMessage('Select a suggestion for better accuracy');
       } else {
         setValidationStatus('warning');
-        setValidationMessage('Consider selecting a suggestion for better accuracy');
+        setValidationMessage('Live search unavailable - add city and state');
       }
     } else {
       setValidationStatus('none');
-      setValidationMessage('Continue typing for suggestions');
+      setValidationMessage(placesReady ? 'Continue typing for live suggestions' : 'Continue typing');
     }
   };
 
@@ -280,7 +333,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
 
     onChange(finalAddress);
     setShowSuggestions(false);
-    currentSearchRef.current = ''; // Reset search to allow new searches
+    currentSearchRef.current = '';
     
     // Mark saved location as used
     if (suggestion.type === 'saved') {
@@ -296,7 +349,6 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     debugLog('Input focused');
     setShowSuggestions(true);
     
-    // Immediately search if there's content
     if (value.length >= 1) {
       generateSuggestions(value);
     }
@@ -304,7 +356,6 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
 
   const handleBlur = () => {
     debugLog('Input blurred');
-    // Longer delay to allow clicking suggestions
     setTimeout(() => setShowSuggestions(false), 300);
   };
 
@@ -312,10 +363,8 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     debugLog(`Input changed: "${newValue}"`);
     onChange(newValue);
     
-    // Reset search reference to allow new searches
     currentSearchRef.current = '';
     
-    // Show suggestions immediately if there's content
     if (newValue.length >= 1 && !showSuggestions) {
       setShowSuggestions(true);
     }
@@ -324,7 +373,6 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   const getSuggestionIcon = (suggestion: AddressSuggestion) => {
     switch (suggestion.type) {
       case 'google': 
-        // Use different icons based on place type
         if (suggestion.details?.types?.includes('establishment')) {
           return <Navigation className="w-3 h-3 text-blue-600" />;
         }
@@ -372,10 +420,15 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     <div className="relative">
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
         {label}
-        {/* Live indicator */}
+        {/* Status indicators */}
         {placesReady && (
           <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-medium">
             • Live
+          </span>
+        )}
+        {placesError && (
+          <span className="ml-2 text-xs text-red-600 dark:text-red-400 font-medium">
+            • Offline
           </span>
         )}
       </label>
@@ -397,7 +450,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         />
         
         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-          {/* Loading indicator for live search */}
+          {/* Loading indicator */}
           {isLoadingSuggestions && (
             <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
           )}
@@ -425,6 +478,14 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         </div>
       )}
 
+      {/* Places Error Message */}
+      {placesError && !placesReady && (
+        <div className="mt-1 text-xs text-orange-600 dark:text-orange-400 flex items-center gap-1">
+          <AlertCircle className="w-3 h-3" />
+          <span>Live search unavailable - using saved locations</span>
+        </div>
+      )}
+
       {/* Google Maps Style Suggestions Dropdown */}
       {showSuggestions && (suggestions.length > 0 || isLoadingSuggestions) && (
         <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg max-h-64 overflow-y-auto">
@@ -432,12 +493,15 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
           <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-750">
             <div className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-400">
               <Search className="w-3 h-3" />
-              <span>Google Maps Suggestions</span>
+              <span>Address Suggestions</span>
               {isLoadingSuggestions && (
                 <Loader2 className="w-3 h-3 animate-spin" />
               )}
               {placesReady && !isLoadingSuggestions && (
                 <span className="ml-auto text-green-600 dark:text-green-400">Live</span>
+              )}
+              {!placesReady && !isLoadingSuggestions && suggestions.length > 0 && (
+                <span className="ml-auto text-orange-600 dark:text-orange-400">Saved</span>
               )}
             </div>
           </div>
@@ -454,7 +518,6 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
                   {getSuggestionIcon(suggestion)}
                   <div className="flex-1 min-w-0">
                     {suggestion.type === 'google' && suggestion.details ? (
-                      // Google Places suggestion with structured formatting
                       <div>
                         <div className="font-medium text-gray-900 dark:text-white text-sm truncate">
                           {suggestion.details.mainText}
@@ -466,7 +529,6 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
                         )}
                       </div>
                     ) : (
-                      // Other suggestion types
                       <div className="text-sm text-gray-900 dark:text-white truncate">
                         {suggestion.address}
                       </div>
@@ -489,6 +551,23 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
                 </div>
               </div>
             )}
+            
+            {/* No results message */}
+            {!isLoadingSuggestions && suggestions.length === 0 && value.length >= 2 && (
+              <div className="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">
+                {placesReady ? (
+                  <div>
+                    <div>No suggestions found for "{value}"</div>
+                    <div className="text-xs mt-1">Try being more specific or check spelling</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div>Live search unavailable</div>
+                    <div className="text-xs mt-1">Using saved locations only</div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -496,7 +575,11 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       {/* Help Text */}
       {!showSuggestions && value.length === 0 && (
         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          💡 Powered by Google Maps - start typing for live suggestions
+          {placesReady ? (
+            <span>💡 Powered by Google Maps - start typing for live suggestions</span>
+          ) : (
+            <span>💡 Start typing to search saved locations{placesError && ' (live search unavailable)'}</span>
+          )}
         </div>
       )}
     </div>
