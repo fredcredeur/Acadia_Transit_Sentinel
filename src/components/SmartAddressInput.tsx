@@ -1,4 +1,4 @@
-// Enhanced SmartAddressInput.tsx with real-time Google Places search
+// Fixed SmartAddressInput.tsx - Properly isolated instances
 // Replace your current SmartAddressInput.tsx with this version
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -15,6 +15,8 @@ interface SmartAddressInputProps {
   placeholder: string;
   disabled?: boolean;
   onLocationSelect?: (location: SavedLocation) => void;
+  // Add unique identifier to prevent conflicts
+  inputId?: string;
 }
 
 interface AddressSuggestion {
@@ -49,7 +51,8 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   onChange,
   placeholder,
   disabled = false,
-  onLocationSelect
+  onLocationSelect,
+  inputId = Math.random().toString(36) // Generate unique ID if not provided
 }) => {
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -57,42 +60,54 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   const [validationStatus, setValidationStatus] = useState<'none' | 'valid' | 'warning' | 'error'>('none');
   const [validationMessage, setValidationMessage] = useState('');
   const [recentAddresses, setRecentAddresses] = useState<string[]>([]);
+  const [placesReady, setPlacesReady] = useState(false);
   
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimeoutRef = useRef<number>();
   const placesServiceRef = useRef<PlacesService | null>(null);
+  const lastSearchQuery = useRef<string>('');
   
-  const { savedLocations, addLocation, markAsUsed } = useSavedLocations();
+  const { savedLocations, markAsUsed } = useSavedLocations();
   const { coordinates, getCurrentLocation, isLoading: isGettingLocation } = useGeolocation();
 
-  // Initialize Places service
+  // Debug logging with input ID
+  const debugLog = (message: string, data?: any) => {
+    console.log(`🔍 [${inputId.substring(0, 8)}] ${label}: ${message}`, data || '');
+  };
+
+  // Initialize Places service for this specific input
   useEffect(() => {
     const initializePlaces = async () => {
       try {
+        debugLog('Initializing Places service...');
         const placesService = PlacesService.getInstance();
         await placesService.initialize();
         placesServiceRef.current = placesService;
-        console.log('✅ Places service initialized for live search');
+        setPlacesReady(true);
+        debugLog('✅ Places service ready');
       } catch (error) {
-        console.warn('⚠️ Places service failed to initialize:', error);
+        debugLog('❌ Places service failed:', error);
+        setPlacesReady(false);
       }
     };
 
     initializePlaces();
-  }, []);
+  }, [inputId]);
 
-  // Load recent addresses from localStorage
+  // Load recent addresses from localStorage with unique key
   useEffect(() => {
-    const stored = localStorage.getItem('recent-addresses');
+    const storageKey = `recent-addresses-${inputId}`;
+    const stored = localStorage.getItem(storageKey);
     if (stored) {
       try {
         const recent = JSON.parse(stored);
-        setRecentAddresses(recent.slice(0, 5)); // Keep last 5
+        setRecentAddresses(recent.slice(0, 5));
+        debugLog('Loaded recent addresses:', recent.length);
       } catch (error) {
-        console.warn('Failed to load recent addresses:', error);
+        debugLog('Failed to load recent addresses:', error);
       }
     }
-  }, []);
+  }, [inputId]);
 
   // Handle current location
   useEffect(() => {
@@ -100,28 +115,37 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       const coordString = `${coordinates.lat},${coordinates.lng}`;
       onChange(coordString);
       addToRecentAddresses(`Current Location (${coordString})`);
+      debugLog('Set current location:', coordString);
     }
   }, [coordinates, onChange]);
 
-  // Debounced live search
-  const performLiveSearch = useCallback(async (searchQuery: string) => {
-    if (!placesServiceRef.current || searchQuery.length < 2) {
+  // Perform live search with proper error handling
+  const performLiveSearch = useCallback(async (searchQuery: string): Promise<AddressSuggestion[]> => {
+    if (!placesServiceRef.current || !placesReady || searchQuery.length < 2) {
+      debugLog('Skipping live search - not ready or query too short');
+      return [];
+    }
+
+    // Prevent duplicate searches
+    if (lastSearchQuery.current === searchQuery) {
+      debugLog('Skipping duplicate search');
       return [];
     }
 
     try {
       setIsLoadingSuggestions(true);
-      console.log(`🔍 Live searching: "${searchQuery}"`);
+      lastSearchQuery.current = searchQuery;
+      debugLog(`🔍 Live searching: "${searchQuery}"`);
       
       const predictions = await placesServiceRef.current.getPlacePredictions(searchQuery, {
         types: ['geocode'],
         componentRestrictions: { country: 'us' }
       });
 
-      console.log(`📍 Found ${predictions.length} live suggestions`);
+      debugLog(`📍 Found ${predictions.length} live suggestions`);
 
-      return predictions.map(prediction => ({
-        id: `live-${prediction.place_id}`,
+      const liveSuggestions = predictions.map((prediction, index) => ({
+        id: `live-${inputId}-${index}`,
         address: prediction.description,
         type: 'live' as const,
         confidence: 0.9,
@@ -132,47 +156,56 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         }
       }));
 
+      return liveSuggestions;
+
     } catch (error) {
-      console.warn('Live search failed:', error);
+      debugLog('❌ Live search failed:', error);
       return [];
     } finally {
       setIsLoadingSuggestions(false);
     }
-  }, []);
+  }, [placesReady, inputId]);
 
   // Generate comprehensive suggestions
   const generateSuggestions = useCallback(async (input: string) => {
     if (input.length < 2) {
       setSuggestions([]);
+      debugLog('Clearing suggestions - input too short');
       return;
     }
 
+    debugLog(`Generating suggestions for: "${input}"`);
     const inputLower = input.toLowerCase();
     const allSuggestions: AddressSuggestion[] = [];
 
     // 1. Saved locations (highest priority)
     const savedSuggestions = savedLocations
       .filter(loc => loc.address.toLowerCase().includes(inputLower))
-      .map(loc => ({
-        id: `saved-${loc.id}`,
+      .map((loc, index) => ({
+        id: `saved-${inputId}-${index}`,
         address: loc.address,
         type: 'saved' as const,
         confidence: 1.0
       }));
 
+    debugLog(`Found ${savedSuggestions.length} saved suggestions`);
+
     // 2. Recent addresses
     const recentSuggestions = recentAddresses
       .filter(addr => addr.toLowerCase().includes(inputLower))
-      .filter(addr => !savedLocations.some(loc => loc.address === addr)) // Avoid duplicates
+      .filter(addr => !savedLocations.some(loc => loc.address === addr))
       .map((addr, index) => ({
-        id: `recent-${index}`,
+        id: `recent-${inputId}-${index}`,
         address: addr,
         type: 'recent' as const,
         confidence: 0.8
       }));
 
+    debugLog(`Found ${recentSuggestions.length} recent suggestions`);
+
     // 3. Live Google Places suggestions
     const liveSuggestions = await performLiveSearch(input);
+    debugLog(`Found ${liveSuggestions.length} live suggestions`);
 
     // 4. Static fallback suggestions
     const staticSuggestions = staticLouisianaAddresses
@@ -183,16 +216,17 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         !liveSuggestions.some(live => live.address === addr)
       )
       .map((addr, index) => ({
-        id: `static-${index}`,
+        id: `static-${inputId}-${index}`,
         address: addr,
         type: 'static' as const,
         confidence: 0.6
       }));
 
-    // Combine and sort by confidence, then by type priority
+    debugLog(`Found ${staticSuggestions.length} static suggestions`);
+
+    // Combine and sort
     allSuggestions.push(...savedSuggestions, ...recentSuggestions, ...liveSuggestions, ...staticSuggestions);
     
-    // Sort by priority: saved > recent > live > static
     const typePriority = { saved: 4, recent: 3, live: 2, static: 1 };
     allSuggestions.sort((a, b) => {
       const priorityDiff = typePriority[b.type] - typePriority[a.type];
@@ -200,24 +234,26 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       return b.confidence - a.confidence;
     });
 
-    // Limit to 8 suggestions
-    setSuggestions(allSuggestions.slice(0, 8));
-  }, [savedLocations, recentAddresses, performLiveSearch]);
+    const finalSuggestions = allSuggestions.slice(0, 8);
+    setSuggestions(finalSuggestions);
+    debugLog(`Set ${finalSuggestions.length} total suggestions`);
+  }, [savedLocations, recentAddresses, performLiveSearch, inputId]);
 
-  // Debounced search effect
+  // Debounced search effect with unique timeout per input
   useEffect(() => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
 
-    // Skip search if user is selecting from dropdown
     if (!showSuggestions) {
+      debugLog('Skipping search - suggestions not shown');
       return;
     }
 
+    debugLog(`Debouncing search for: "${value}"`);
     debounceTimeoutRef.current = setTimeout(() => {
       generateSuggestions(value);
-    }, 300); // 300ms delay for better UX
+    }, 300);
 
     return () => {
       if (debounceTimeoutRef.current) {
@@ -277,24 +313,27 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   };
 
   const addToRecentAddresses = (address: string) => {
+    const storageKey = `recent-addresses-${inputId}`;
     const updated = [address, ...recentAddresses.filter(addr => addr !== address)].slice(0, 5);
     setRecentAddresses(updated);
-    localStorage.setItem('recent-addresses', JSON.stringify(updated));
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+    debugLog('Added to recent:', address);
   };
 
   const handleSuggestionClick = async (suggestion: AddressSuggestion) => {
-    console.log(`📍 Selected suggestion: ${suggestion.address} (${suggestion.type})`);
+    debugLog(`📍 Selected suggestion: ${suggestion.address} (${suggestion.type})`);
     
     let finalAddress = suggestion.address;
 
     // If it's a live Google Places suggestion, get full details
     if (suggestion.type === 'live' && suggestion.details?.placeId && placesServiceRef.current) {
       try {
+        debugLog('Getting place details...');
         const placeDetails = await placesServiceRef.current.getPlaceDetails(suggestion.details.placeId);
         finalAddress = placeDetails.formatted_address;
-        console.log(`📍 Enhanced address: ${finalAddress}`);
+        debugLog(`📍 Enhanced address: ${finalAddress}`);
       } catch (error) {
-        console.warn('Failed to get place details:', error);
+        debugLog('Failed to get place details:', error);
       }
     }
 
@@ -310,12 +349,14 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         onLocationSelect?.(savedLocation);
       }
     }
+
+    // Clear last search to allow future searches
+    lastSearchQuery.current = '';
   };
 
   const autoEnhanceAddress = () => {
     let enhanced = value.trim();
     
-    // Add state if missing
     if (!enhanced.includes('LA') && !enhanced.includes('Louisiana')) {
       const louisianaKeywords = ['lafayette', 'opelousas', 'acadiana', 'eunice', 'crowley'];
       const isLouisiana = louisianaKeywords.some(keyword => 
@@ -327,15 +368,16 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       }
     }
     
-    // Add USA for better geocoding
     if (!enhanced.includes('USA')) {
       enhanced += ', USA';
     }
     
     onChange(enhanced);
+    debugLog('Auto-enhanced address:', enhanced);
   };
 
   const handleFocus = () => {
+    debugLog('Input focused');
     setShowSuggestions(true);
     if (value.length >= 2 && suggestions.length === 0) {
       generateSuggestions(value);
@@ -343,7 +385,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   };
 
   const handleBlur = () => {
-    // Delay hiding to allow click on suggestions
+    debugLog('Input blurred');
     setTimeout(() => setShowSuggestions(false), 200);
   };
 
@@ -387,6 +429,12 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     <div className="relative">
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
         {label}
+        {/* Debug indicator */}
+        {process.env.NODE_ENV === 'development' && (
+          <span className="ml-2 text-xs text-gray-400">
+            [{inputId.substring(0, 8)}] {placesReady ? '🟢' : '🔴'}
+          </span>
+        )}
       </label>
       
       <div className="relative">
@@ -396,7 +444,10 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
           ref={inputRef}
           type="text"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            debugLog(`Input changed: "${e.target.value}"`);
+            onChange(e.target.value);
+          }}
           onFocus={handleFocus}
           onBlur={handleBlur}
           disabled={disabled}
@@ -406,7 +457,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         />
         
         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-          {/* Loading indicator for live search */}
+          {/* Loading indicator */}
           {isLoadingSuggestions && (
             <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
           )}
@@ -456,6 +507,12 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
               {isLoadingSuggestions && (
                 <Loader2 className="w-3 h-3 animate-spin ml-1" />
               )}
+              {/* Debug info */}
+              {process.env.NODE_ENV === 'development' && (
+                <span className="ml-auto text-xs">
+                  ({suggestions.length} found)
+                </span>
+              )}
             </div>
             
             {suggestions.map((suggestion) => (
@@ -468,7 +525,6 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
                   {getSuggestionIcon(suggestion)}
                   <div className="flex-1 min-w-0">
                     {suggestion.details ? (
-                      // Live Google Places suggestion with structured formatting
                       <div>
                         <div className="font-medium text-gray-900 dark:text-white truncate">
                           {suggestion.details.mainText}
@@ -478,7 +534,6 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
                         </div>
                       </div>
                     ) : (
-                      // Other suggestion types
                       <div className="text-gray-900 dark:text-white truncate">
                         {suggestion.address}
                       </div>
@@ -503,17 +558,16 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       {/* Help Text */}
       {!showSuggestions && value.length === 0 && (
         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          💡 Start typing for live address suggestions from Google Places
+          💡 Start typing for live address suggestions
         </div>
       )}
       
-      {/* Address Format Examples */}
-      {validationStatus === 'error' && (
-        <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs text-blue-700 dark:text-blue-300">
-          <div className="font-medium mb-1">Live search examples:</div>
-          <div>• Type "walmart laf" → Walmart suggestions in Lafayette</div>
-          <div>• Type "university lou" → University of Louisiana</div>
-          <div>• Type "123 main" → Street address suggestions</div>
+      {/* Debug info in development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mt-1 text-xs text-gray-400">
+          Places: {placesReady ? 'Ready' : 'Not Ready'} | 
+          Suggestions: {suggestions.length} | 
+          Loading: {isLoadingSuggestions ? 'Yes' : 'No'}
         </div>
       )}
     </div>
