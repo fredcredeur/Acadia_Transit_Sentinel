@@ -248,32 +248,46 @@ export class RouteAnalysisService {
         waypoints: request.stops?.map(s => s.address)
       }
     ];
+    
+    let allRoutes: google.maps.DirectionsRoute[] = [];
 
     for (const strategy of routingStrategies) {
-      try {
-        console.log(`   🛣️ Trying routing strategy: ${strategy.name}`);
-        
-        const routeResponse = await this.googleMapsService.getRoutes({
-          origin: strategy.origin,
-          destination: strategy.destination,
-          waypoints: strategy.waypoints?.filter(Boolean),
-          travelMode: google.maps.TravelMode.DRIVING,
-          avoidHighways: request.avoidHighways || false,
-          avoidTolls: request.avoidTolls || false,
-          departureTime: new Date()
-        });
+        if (allRoutes.length >= 3) break; // Stop if we have enough routes
 
-        if (routeResponse.routes && routeResponse.routes.length > 0) {
-          console.log(`   ✅ Strategy "${strategy.name}" found ${routeResponse.routes.length} route(s)`);
-          return routeResponse.routes;
+        try {
+            console.log(`   🛣️ Trying routing strategy: ${strategy.name}`);
+            
+            const routeResponse = await this.googleMapsService.getRoutes({
+                origin: strategy.origin,
+                destination: strategy.destination,
+                waypoints: strategy.waypoints?.filter(Boolean),
+                travelMode: google.maps.TravelMode.DRIVING,
+                avoidHighways: request.avoidHighways || false,
+                avoidTolls: request.avoidTolls || false,
+                departureTime: new Date(),
+                provideRouteAlternatives: true // Ask for more routes
+            });
+
+            if (routeResponse.routes && routeResponse.routes.length > 0) {
+                console.log(`   ✅ Strategy "${strategy.name}" found ${routeResponse.routes.length} route(s)`);
+                // Add unique routes to our collection
+                routeResponse.routes.forEach(newRoute => {
+                    if (!allRoutes.some(existingRoute => existingRoute.summary === newRoute.summary)) {
+                        allRoutes.push(newRoute);
+                    }
+                });
+            }
+
+        } catch (error) {
+            console.warn(`   ❌ Strategy "${strategy.name}" failed:`, error instanceof Error ? error.message : error);
         }
-
-      } catch (error) {
-        console.warn(`   ❌ Strategy "${strategy.name}" failed:`, error instanceof Error ? error.message : error);
-      }
+    }
+    
+    if (allRoutes.length === 0) {
+        throw new Error(`No routes found with any strategy between "${request.origin}" and "${request.destination}"`);
     }
 
-    throw new Error(`No routes found with any strategy between "${request.origin}" and "${request.destination}"`);
+    return allRoutes;
   }
 
   private async convertAndAnalyzeRoutes(
@@ -306,8 +320,8 @@ export class RouteAnalysisService {
       return a.estimatedTime - b.estimatedTime;
     });
 
-    // Return top 3 routes
-    return sorted.slice(0, 3);
+    // Return all sorted routes
+    return sorted;
   }
 
   private createUserFriendlyError(error: unknown, request: RouteAnalysisRequest): Error {
