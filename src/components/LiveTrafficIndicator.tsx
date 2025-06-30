@@ -4,7 +4,7 @@ import { RouteSegment } from '../types';
 export const LiveTrafficIndicator: React.FC<{ segment: RouteSegment }> = ({ segment }) => {
   if (!segment.liveTrafficData) return null;
 
-  const { congestionLevel, currentSpeed, normalSpeed, trafficDelay } = segment.liveTrafficData;
+  const { congestionLevel, currentSpeed, trafficDelay } = segment.liveTrafficData;
   
   const getTrafficColor = (level: string) => {
     switch (level) {

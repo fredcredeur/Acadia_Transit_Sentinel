@@ -40,11 +40,11 @@ export class PlacesService {
 
     try {
       // Check if Google Maps is available
-      if (typeof window === 'undefined' || !(window as any).google?.maps?.places) {
+      if (typeof window === 'undefined' || !(window as Window & typeof globalThis).google?.maps?.places) {
         throw new Error('Google Maps Places API not available');
       }
 
-      const google = (window as any).google;
+      const _google = (window as Window & typeof globalThis).google;
       
       this.isInitialized = true;
       console.log('Places service initialized successfully');
@@ -75,12 +75,8 @@ export class PlacesService {
       return [];
     }
 
-    const autocomplete = new google.maps.places.Autocomplete(document.createElement('input'), {
-      types: options?.types || ['address'],
-      componentRestrictions: options?.componentRestrictions || { country: 'us' }
-    });
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       const service = new google.maps.places.AutocompleteService();
       service.getPlacePredictions({ input }, (predictions, status) => {
         if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GoogleMapsService } from '../services/googleMapsService';
 import { Route, Vehicle } from '../types';
 import { RiskCalculator } from '../utils/riskCalculator';
@@ -24,18 +24,12 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
   const [directionsRenderer, setDirectionsRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
   const [segmentPolylines, setSegmentPolylines] = useState<Map<string, google.maps.Polyline>>(new Map());
 
-  useEffect(() => {
-    initializeMap();
-  }, []);
-
-  useEffect(() => {
-    if (map && route) {
-      displayRoute();
+  const initializeMap = useCallback(async () => {
+    if (!mapRef.current) {
+      setError('Map container not found.');
+      setIsLoading(false);
+      return;
     }
-  }, [map, route, vehicle]);
-
-  const initializeMap = async () => {
-    if (!mapRef.current) return;
 
     try {
       setIsLoading(true);
@@ -76,9 +70,9 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const clearOverlays = () => {
+  const clearOverlays = useCallback(() => {
     overlaysRef.current.forEach(overlay => {
       if (overlay instanceof google.maps.Marker) {
         overlay.setMap(null);
@@ -91,9 +85,9 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
     // Clear segment polylines map
     segmentPolylines.forEach(polyline => polyline.setMap(null));
     setSegmentPolylines(new Map());
-  };
+  }, [segmentPolylines]); // Add segmentPolylines to dependencies
 
-  const zoomToSegment = (segmentId: string) => {
+  const zoomToSegment = useCallback((segmentId: string) => {
     if (!map) return;
 
     const segment = route.segments.find(s => s.id === segmentId);
@@ -148,205 +142,13 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
 
     // Call the callback if provided
     onSegmentClick?.(segmentId);
-  };
+  }, [map, route, segmentPolylines, onSegmentClick]); // Add dependencies
 
-  const displayRoute = async () => {
-    if (!map || !route.segments.length) return;
-
-    // Clear existing overlays
-    clearOverlays();
-
-    try {
-      // Get the actual route from Google Maps using the first and last segment coordinates
-      const firstSegment = route.segments[0];
-      const lastSegment = route.segments[route.segments.length - 1];
-      
-      const origin = `${firstSegment.startLat},${firstSegment.startLng}`;
-      const destination = `${lastSegment.endLat},${lastSegment.endLng}`;
-
-      console.log('Fetching route for map display:', { origin, destination });
-
-      const googleMapsService = GoogleMapsService.getInstance();
-      const routeResponse = await googleMapsService.getRoutes({
-        origin,
-        destination,
-        waypoints: route.waypoints, // ← ADD THIS LINE
-        travelMode: google.maps.TravelMode.DRIVING,
-        avoidHighways: false,
-        avoidTolls: false
-      });
-
-      if (routeResponse.routes.length > 0 && directionsRenderer) {
-        const googleRoute = routeResponse.routes[0];
-        
-        // Display the base route using DirectionsRenderer
-        directionsRenderer.setDirections({
-          routes: [googleRoute],
-          request: {
-            origin,
-            destination,
-            waypoints: route.waypoints?.map(waypoint => ({
-              location: waypoint,
-              stopover: true
-            })) || [], // ← ADD THESE LINES
-            travelMode: google.maps.TravelMode.DRIVING
-          }
-        } as google.maps.DirectionsResult);
-
-        // Now overlay risk-based segments on top of the actual route
-        await displayRiskOverlays(googleRoute);
-
-        // Add markers for critical points
-        addCriticalPointMarkers();
-
-        // Fit map to route bounds
-        const bounds = new google.maps.LatLngBounds();
-        googleRoute.legs.forEach(leg => {
-          leg.steps.forEach(step => {
-            if (step.path) {
-              step.path.forEach(point => bounds.extend(point));
-            }
-          });
-        });
-        
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, {
-            top: 50,
-            right: 50,
-            bottom: 50,
-            left: 50
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Failed to display route on map:', error);
-      // Fallback to simple segment display if route fetching fails
-      displayFallbackRoute();
-    }
-  };
-
-  const displayRiskOverlays = async (googleRoute: google.maps.DirectionsRoute) => {
-    if (!map) return;
-
-    // Get the detailed path from the Google route
-    const routePath: google.maps.LatLng[] = [];
-    googleRoute.legs.forEach(leg => {
-      leg.steps.forEach(step => {
-        if (step.path) {
-          routePath.push(...step.path);
-        }
-      });
-    });
-
-    if (routePath.length === 0) return;
-
-    const newSegmentPolylines = new Map<string, google.maps.Polyline>();
-
-    // Calculate risk for each segment and create overlays for high-risk areas
-    route.segments.forEach((segment, index) => {
-      const riskScore = RiskCalculator.calculateSegmentRisk(segment, vehicle);
-      
-      // Create overlays for all segments, but make high-risk ones more prominent
-      const segmentStartIndex = Math.floor((index / route.segments.length) * routePath.length);
-      const segmentEndIndex = Math.floor(((index + 1) / route.segments.length) * routePath.length);
-      
-      const segmentPath = routePath.slice(segmentStartIndex, segmentEndIndex + 1);
-      
-      if (segmentPath.length > 1) {
-        const strokeWeight = riskScore >= 40 ? 8 : 6;
-        const strokeOpacity = riskScore >= 40 ? 0.9 : 0.7;
-        
-        const riskPolyline = new google.maps.Polyline({
-          path: segmentPath,
-          geodesic: true,
-          strokeColor: RiskCalculator.getRiskColor(riskScore),
-          strokeOpacity: strokeOpacity,
-          strokeWeight: strokeWeight,
-          zIndex: 2,
-          clickable: true
-        });
-
-        riskPolyline.setMap(map);
-        overlaysRef.current.push(riskPolyline);
-        newSegmentPolylines.set(segment.id, riskPolyline);
-
-        // Add click listener to zoom to segment
-        riskPolyline.addListener('click', (event: google.maps.MapMouseEvent) => {
-          console.log('Segment clicked:', segment.id);
-          zoomToSegment(segment.id);
-        });
-
-        // Add hover effects
-        riskPolyline.addListener('mouseover', () => {
-          riskPolyline.setOptions({
-            strokeWeight: strokeWeight + 2,
-            strokeOpacity: Math.min(strokeOpacity + 0.2, 1),
-            zIndex: 5
-          });
-          
-          if (mapRef.current) {
-            mapRef.current.style.cursor = 'pointer';
-          }
-        });
-
-        riskPolyline.addListener('mouseout', () => {
-          riskPolyline.setOptions({
-            strokeWeight: strokeWeight,
-            strokeOpacity: strokeOpacity,
-            zIndex: 2
-          });
-          
-          if (mapRef.current) {
-            mapRef.current.style.cursor = '';
-          }
-        });
-
-        // Add info window on click
-        riskPolyline.addListener('click', (event: google.maps.MapMouseEvent) => {
-          if (event.latLng) {
-            const infoWindow = new google.maps.InfoWindow({
-              content: `
-                <div class="p-3 max-w-xs">
-                  <h3 class="font-semibold text-sm mb-2">${segment.streetName}</h3>
-                  <div class="space-y-1 text-xs">
-                    <div class="flex justify-between">
-                      <span>Risk Level:</span>
-                      <span class="font-medium" style="color: ${RiskCalculator.getRiskColor(riskScore)}">
-                        ${RiskCalculator.getRiskLabel(riskScore)} (${Math.round(riskScore)}%)
-                      </span>
-                    </div>
-                    <div class="text-gray-600">${segment.description}</div>
-                    ${segment.riskFactors.heightRestriction > 0 ? 
-                      `<div class="text-orange-600">⚠️ Height limit: ${segment.riskFactors.heightRestriction}ft</div>` : ''
-                    }
-                    ${segment.riskFactors.pedestrianTraffic > 70 ? 
-                      `<div class="text-blue-600">👥 Heavy pedestrian traffic</div>` : ''
-                    }
-                    ${segment.riskFactors.roadWidth > 60 ? 
-                      `<div class="text-purple-600">🛣️ Narrow road</div>` : ''
-                    }
-                    <div class="mt-2 pt-2 border-t border-gray-200">
-                      <div class="text-xs text-gray-500">Click to zoom to this segment</div>
-                    </div>
-                  </div>
-                </div>
-              `,
-              position: event.latLng
-            });
-            infoWindow.open(map);
-          }
-        });
-      }
-    });
-
-    setSegmentPolylines(newSegmentPolylines);
-  };
-
-  const addCriticalPointMarkers = () => {
+  const addCriticalPointMarkers = useCallback(() => {
     if (!map) return;
 
     // Add markers for critical points only
-    route.criticalPoints.forEach((criticalPoint, index) => {
+    route.criticalPoints.forEach((criticalPoint, _index) => {
       const segment = route.segments.find(s => s.id === criticalPoint.segmentId);
       if (segment) {
         const marker = new google.maps.Marker({
@@ -374,33 +176,7 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
 
         // Add info window for critical points
         const infoWindow = new google.maps.InfoWindow({
-          content: `
-            <div class="p-3 max-w-sm">
-              <div class="flex items-center gap-2 mb-2">
-                <div class="w-3 h-3 rounded-full" style="background-color: ${
-                  criticalPoint.riskLevel === 'critical' ? '#DC2626' : '#F59E0B'
-                }"></div>
-                <h3 class="font-semibold text-sm">Critical Point</h3>
-              </div>
-              <div class="space-y-2 text-xs">
-                <div><strong>Location:</strong> ${segment.streetName}</div>
-                <div><strong>Issue:</strong> ${criticalPoint.description}</div>
-                <div><strong>Risk Level:</strong> 
-                  <span class="font-medium ${
-                    criticalPoint.riskLevel === 'critical' ? 'text-red-600' : 'text-amber-600'
-                  }">
-                    ${criticalPoint.riskLevel.toUpperCase()}
-                  </span>
-                </div>
-                <div class="mt-2 p-2 bg-gray-50 rounded text-gray-700">
-                  <strong>Recommendation:</strong> Reduce speed and use extra caution when approaching this area.
-                </div>
-                <div class="mt-2 pt-2 border-t border-gray-200">
-                  <div class="text-xs text-gray-500">Click to zoom to this area</div>
-                </div>
-              </div>
-            </div>
-          `
+          content: `Critical Point: ${criticalPoint.description}`
         });
 
         marker.addListener('click', () => {
@@ -408,9 +184,9 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
         });
       }
     });
-  };
+  }, [map, route, zoomToSegment]); // Add dependencies
 
-  const displayFallbackRoute = () => {
+  const displayFallbackRoute = useCallback(() => {
     if (!map || !route.segments.length) return;
 
     console.log('Using fallback route display');
@@ -444,7 +220,7 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
     const newSegmentPolylines = new Map<string, google.maps.Polyline>();
 
     // Create risk-based overlays for segments with elevated risk
-    route.segments.forEach((segment, index) => {
+    route.segments.forEach((segment, _index) => {
       const riskScore = RiskCalculator.calculateSegmentRisk(segment, vehicle);
       
       const segmentPath = [
@@ -518,7 +294,205 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
         left: 50
       });
     }
-  };
+  }, [map, route, vehicle, zoomToSegment, clearOverlays, addCriticalPointMarkers]); // Add dependencies
+
+  const displayRiskOverlays = useCallback(async (googleRoute: google.maps.DirectionsRoute) => {
+    if (!map) return;
+
+    // Get the detailed path from the Google route
+    const routePath: google.maps.LatLng[] = [];
+    googleRoute.legs.forEach(leg => {
+      leg.steps.forEach(step => {
+        if (step.path) {
+          routePath.push(...step.path);
+        }
+      });
+    });
+
+    if (routePath.length === 0) return;
+
+    const newSegmentPolylines = new Map<string, google.maps.Polyline>();
+
+    // Calculate risk for each segment and create overlays for high-risk areas
+    route.segments.forEach((segment, _index) => {
+      const riskScore = RiskCalculator.calculateSegmentRisk(segment, vehicle);
+      
+      // Create overlays for all segments, but make high-risk ones more prominent
+      const segmentStartIndex = Math.floor((_index / route.segments.length) * routePath.length);
+      const segmentEndIndex = Math.floor(((_index + 1) / route.segments.length) * routePath.length);
+      
+      const segmentPath = routePath.slice(segmentStartIndex, segmentEndIndex + 1);
+      
+      if (segmentPath.length > 1) {
+        const strokeWeight = riskScore >= 40 ? 8 : 6;
+        const strokeOpacity = riskScore >= 40 ? 0.9 : 0.7;
+        
+        const riskPolyline = new google.maps.Polyline({
+          path: segmentPath,
+          geodesic: true,
+          strokeColor: RiskCalculator.getRiskColor(riskScore),
+          strokeOpacity: strokeOpacity,
+          strokeWeight: strokeWeight,
+          zIndex: 2,
+          clickable: true
+        });
+
+        riskPolyline.setMap(map);
+        overlaysRef.current.push(riskPolyline);
+        newSegmentPolylines.set(segment.id, riskPolyline);
+
+        // Add click listener to zoom to segment
+        riskPolyline.addListener('click', () => {
+          console.log('Segment clicked:', segment.id);
+          zoomToSegment(segment.id);
+        });
+
+        // Add hover effects
+        riskPolyline.addListener('mouseover', () => {
+          riskPolyline.setOptions({
+            strokeWeight: strokeWeight + 2,
+            strokeOpacity: Math.min(strokeOpacity + 0.2, 1),
+            zIndex: 5
+          });
+          
+          if (mapRef.current) {
+            mapRef.current.style.cursor = 'pointer';
+          }
+        });
+
+        riskPolyline.addListener('mouseout', () => {
+          riskPolyline.setOptions({
+            strokeWeight: strokeWeight,
+            strokeOpacity: strokeOpacity,
+            zIndex: 2
+          });
+          
+          if (mapRef.current) {
+            mapRef.current.style.cursor = '';
+          }
+        });
+
+        // Add info window on click
+        riskPolyline.addListener('click', (event: google.maps.MapMouseEvent) => {
+          if (event.latLng) {
+            const infoWindow = new google.maps.InfoWindow({
+              content: `
+                <div class="p-3 max-w-xs">
+                  <h3 class="font-semibold text-sm mb-2">${segment.streetName}</h3>
+                  <div class="space-y-1 text-xs">
+                    <div class="flex justify-between">
+                      <span>Risk Level:</span>
+                      <span class="font-medium" style="color: ${RiskCalculator.getRiskColor(riskScore)}">
+                        ${RiskCalculator.getRiskLabel(riskScore)} (${Math.round(riskScore)}%)
+                      </span>
+                    </div>
+                    <div class="text-gray-600">${segment.description}</div>
+                    ${segment.riskFactors.heightRestriction > 0 ? 
+                      `<div class="text-orange-600">⚠️ Height limit: ${segment.riskFactors.heightRestriction}ft</div>` : ''
+                    }
+                    ${segment.riskFactors.pedestrianTraffic > 70 ? 
+                      `<div class="text-blue-600">👥 Heavy pedestrian traffic</div>` : ''
+                    }
+                    ${segment.riskFactors.roadWidth > 60 ? 
+                      `<div class="text-purple-600">🛣️ Narrow road</div>` : ''
+                    }
+                    <div class="mt-2 pt-2 border-t border-gray-200">
+                      <div class="text-xs text-gray-500">Click to zoom to this segment</div>
+                    </div>
+                  </div>
+                </div>
+              `,
+              position: event.latLng
+            });
+            infoWindow.open(map);
+          }
+        });
+      }
+    });
+
+    setSegmentPolylines(newSegmentPolylines);
+  }, [map, route, vehicle, zoomToSegment, addCriticalPointMarkers]); // Add dependencies
+
+  const displayRoute = useCallback(async () => {
+    if (!map || !route.segments.length) return;
+
+    // Clear existing overlays
+    clearOverlays();
+
+    try {
+      // Get the actual route from Google Maps using the first and last segment coordinates
+      const firstSegment = route.segments[0];
+      const lastSegment = route.segments[route.segments.length - 1];
+      
+      const origin = `${firstSegment.startLat},${firstSegment.startLng}`;
+      const destination = `${lastSegment.endLat},${lastSegment.endLng}`;
+
+      console.log('Fetching route for map display:', { origin, destination });
+
+      const googleMapsService = GoogleMapsService.getInstance();
+      const routeResponse = await googleMapsService.getRoutes({
+        origin,
+        destination,
+        waypoints: route.waypoints, // ← ADD THIS LINE
+        travelMode: google.maps.TravelMode.DRIVING,
+        avoidHighways: false,
+        avoidTolls: false
+      });
+
+      if (routeResponse.routes.length > 0 && directionsRenderer) {
+        const googleRoute = routeResponse.routes[0];
+        
+        // Display the base route using DirectionsRenderer
+        directionsRenderer.setDirections({
+          routes: [googleRoute],
+          request: {
+            origin,
+            destination,
+            waypoints: route.waypoints?.map(waypoint => ({
+              location: waypoint,
+              stopover: true
+            })) || [], // ← ADD THESE LINES
+            travelMode: google.maps.TravelMode.DRIVING
+          }
+        } as google.maps.DirectionsResult);
+
+        // Now overlay risk-based segments on top of the actual route
+        await displayRiskOverlays(googleRoute);
+
+        // Add markers for critical points
+        addCriticalPointMarkers();
+
+        // Fit map to route bounds
+        const bounds = new google.maps.LatLngBounds();
+        googleRoute.legs.forEach(leg => {
+          leg.steps.forEach(step => {
+            if (step.path) {
+              step.path.forEach(point => bounds.extend(point));
+            }
+          });
+        });
+        
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, {
+            top: 50,
+            right: 50,
+            bottom: 50,
+            left: 50
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to display route on map:', error);
+      // Fallback to simple segment display if route fetching fails
+      displayFallbackRoute();
+    }
+  }, [map, route, vehicle, clearOverlays, directionsRenderer, displayRiskOverlays, addCriticalPointMarkers, displayFallbackRoute]); // Add dependencies
+
+  useEffect(() => {
+    if (map && route) {
+      displayRoute();
+    }
+  }, [map, route, vehicle, displayRoute]);
 
   // Cleanup overlays when component unmounts
   useEffect(() => {
@@ -528,14 +502,14 @@ export const GoogleMapComponent: React.FC<GoogleMapComponentProps> = ({
         directionsRenderer.setMap(null);
       }
     };
-  }, [directionsRenderer]);
+  }, [directionsRenderer, clearOverlays]);
 
   // Expose zoom function for external use
   useEffect(() => {
     if (map && onSegmentClick) {
-      (window as any).zoomToSegment = zoomToSegment;
+      (window as Window & typeof globalThis).zoomToSegment = zoomToSegment;
     }
-  }, [map, onSegmentClick]);
+  }, [map, onSegmentClick, zoomToSegment]);
 
   if (error) {
     return (

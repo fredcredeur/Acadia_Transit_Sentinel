@@ -526,12 +526,12 @@ private formatStreetName(streetName: string): string {
     .trim();
 }
 
-private generateEnhancedSegmentDescription(
-  step: google.maps.DirectionsStep,
-  roadData: RoadData,
-  riskFactors: any,
-  vehicle: Vehicle
-): string {
+  private generateEnhancedSegmentDescription(
+    step: google.maps.DirectionsStep,
+    roadData: RoadData,
+    riskFactors: { pedestrianTraffic: number; roadWidth: number; trafficCongestion: number; speedLimit: number; heightRestriction: number; },
+    vehicle: Vehicle
+  ): string {
   const descriptions = [];
   const instructions = step.instructions.toLowerCase();
   const distance = step.distance?.value || 0;

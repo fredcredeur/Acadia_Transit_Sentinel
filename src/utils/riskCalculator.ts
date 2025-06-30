@@ -76,13 +76,13 @@ export class RiskCalculator {
       (roadContextRisk * this.WEIGHTS.roadContext) +
       (intersectionRisk * this.WEIGHTS.intersection);
 
-    const overallRisk = Math.min(Math.max(weightedRisk, 0), 100);
+    const _overallRisk = Math.min(Math.max(weightedRisk, 0), 100);
     
     const analysis = this.generateRiskAnalysis(
       { pedestrianRisk, maneuveringRisk, infrastructureRisk, trafficRisk, roadContextRisk, intersectionRisk },
       vehicle,
       context,
-      overallRisk
+      _overallRisk
     );
 
     return {
@@ -92,7 +92,7 @@ export class RiskCalculator {
       trafficRisk,
       roadContextRisk,
       intersectionRisk,
-      overallRisk,
+      overallRisk: _overallRisk,
       roadContext: context,
       ...analysis
     };
@@ -217,7 +217,6 @@ export class RiskCalculator {
     
     // Base maneuvering difficulty
     const isLargeVehicle = vehicle.length >= 35 || vehicle.width >= 8.5;
-    const isBus = vehicle.length >= 30 && vehicle.length <= 45;
     
     // Road width assessment - context matters!
     const roadWidthFactor = segment.riskFactors.roadWidth;
@@ -254,7 +253,7 @@ export class RiskCalculator {
   }
 
   private static calculateIntelligentTrafficRisk(
-    factors: any, 
+    factors: { pedestrianTraffic: number; roadWidth: number; trafficCongestion: number; speedLimit: number; heightRestriction: number; }, 
     context: RoadContext
   ): number {
     let risk = factors.trafficCongestion;
@@ -583,7 +582,7 @@ export class RiskCalculator {
     };
   }
 
-  static getBusSpecificAdvice(vehicle: Vehicle, route: Route): string[] {
+  static getBusSpecificAdvice(vehicle: Vehicle, _route: Route): string[] {
     const advice: string[] = [];
     if (vehicle.length >= 35) {
       advice.push('Account for rear overhang swing during turns.');

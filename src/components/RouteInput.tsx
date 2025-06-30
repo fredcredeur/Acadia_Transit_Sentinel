@@ -7,7 +7,7 @@ import { SavedLocation, StopLocation } from '../types';
 import { GoogleMapsService } from '../services/googleMapsService';
 
 interface RouteInputProps {
-  onRouteRequest: (origin: string, destination: string, stops?: StopLocation[]) => void;
+  onRouteRequest: (origin: string, destination: string, stops?: StopLocation[], isLoop?: boolean) => void;
   isLoading?: boolean;
   initialOrigin?: string;
   initialDestination?: string;
@@ -146,15 +146,15 @@ export const RouteInput: React.FC<RouteInputProps> = ({
     // Proceed with route analysis
     if (origin.trim() && destination.trim() && !isLoading) {
       console.log('Calling route analysis with stops...');
-      let finalStops = stops.filter(stop => stop.address.trim());
+      const finalStops = stops.filter(stop => stop.address.trim());
 
-      if (isLoop) {
-        // Add origin as the last stop for a loop route
-        finalStops = [...finalStops, { id: 'loop-return', address: origin.trim(), order: finalStops.length }];
-        console.log('Loop route enabled. Added origin as final stop:', origin.trim());
-      }
+      // The loop logic will now be handled in App.tsx
+      // if (isLoop) {
+      //   finalStops = [...finalStops, { id: 'loop-return', address: origin.trim(), order: finalStops.length }];
+      //   console.log('Loop route enabled. Added origin as final stop:', origin.trim());
+      // }
 
-      onRouteRequest(origin.trim(), destination.trim(), finalStops.length > 0 ? finalStops : undefined);
+      onRouteRequest(origin.trim(), destination.trim(), finalStops.length > 0 ? finalStops : undefined, isLoop);
     }
   };
 

@@ -232,7 +232,7 @@ export class USTruckRoutingService {
     let nationalNetworkSegments = 0;
 
     // Check each route segment against government data
-    routeSegments.forEach((segment, index) => {
+    routeSegments.forEach((segment, _index) => {
       const streetName = segment.streetName.toLowerCase();
       
       // Check against FHWA National Network
@@ -323,7 +323,7 @@ export class USTruckRoutingService {
 
   private checkStateRestrictions(
     segment: { streetName: string; startLat: number; startLng: number },
-    vehicle: Vehicle
+    _vehicle: Vehicle
   ): TruckRouteRestriction[] {
     const violations: TruckRouteRestriction[] = [];
     const streetName = segment.streetName.toLowerCase();
@@ -404,12 +404,12 @@ export class USTruckRoutingService {
   public getApprovedAlternatives(
     origin: { lat: number; lng: number },
     destination: { lat: number; lng: number },
-    vehicle: Vehicle
+    _vehicle: Vehicle
   ): string[] {
     const alternatives: string[] = [];
     
     // Recommend National Network routes based on vehicle type
-    if (vehicle.length >= 35) { // Large bus
+    if (_vehicle.length >= 35) { // Large bus
       alternatives.push('Prioritize Interstate highways (I-10, I-49, I-20)');
       alternatives.push('Use US Highways for regional travel (US-90, US-165, US-167)');
       alternatives.push('Avoid local roads and residential streets');

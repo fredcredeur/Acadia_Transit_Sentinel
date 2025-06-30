@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, X, GripVertical, Clock, MapPin, Trash2, Edit2 } from 'lucide-react';
+import { Plus, GripVertical, Clock, MapPin, Trash2, Edit2 } from 'lucide-react';
 import { StopLocation } from '../types';
 import { LocationInput } from './LocationInput';
 

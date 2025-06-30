@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { MapPin, Navigation, Crosshair, Star, Plus, Search, X, Home, Building, Warehouse, Truck, Clock } from 'lucide-react';
-import { SavedLocation, LocationSuggestion } from '../types';
+import { MapPin, Crosshair, Star, Search, X, Home, Building, Warehouse, Truck, Clock } from 'lucide-react';
+import { SavedLocation } from '../types';
 import { useSavedLocations } from '../hooks/useSavedLocations';
 import { useToast } from '../hooks/useToast';
 import { useGeolocation } from '../hooks/useGeolocation';
@@ -27,7 +27,6 @@ export const LocationInput: React.FC<LocationInputProps> = ({
   onPlaceSelect,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const { showToast } = useToast();
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -65,7 +64,7 @@ export const LocationInput: React.FC<LocationInputProps> = ({
         } else {
           setHasGoogleMaps(false);
         }
-      } catch (error) {
+      } catch (_error) { // Changed 'error' to '_error'
         setHasGoogleMaps(false);
         setPlacesInitialized(false);
       }
@@ -174,16 +173,13 @@ export const LocationInput: React.FC<LocationInputProps> = ({
         const placeDetails = await placesService.getPlaceDetails(prediction.place_id);
         const fullAddress = placeDetails.formatted_address;
         onChange(fullAddress);
-        setSelectedAddress(fullAddress);
         onPlaceSelect?.(prediction.place_id, fullAddress);
       } else {
         onChange(prediction.description);
-        setSelectedAddress(prediction.description);
       }
       setIsDropdownOpen(false);
-    } catch (error) {
+    } catch (_error) { // Changed 'error' to '_error'
       onChange(prediction.description);
-      setSelectedAddress(prediction.description);
       setIsDropdownOpen(false);
     }
   };

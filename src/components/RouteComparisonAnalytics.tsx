@@ -3,9 +3,6 @@ import { Route, Vehicle } from '../types';
 import { RiskCalculator } from '../utils/riskCalculator';
 import { 
   BarChart3, 
-  Clock, 
-  MapPin, 
-  AlertTriangle, 
   TrendingUp, 
   TrendingDown,
   Equal,
@@ -108,7 +105,7 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
           ].map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => setComparisonMode(key as any)}
+              onClick={() => setComparisonMode(key as 'overview' | 'detailed' | 'recommendations')}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
                 comparisonMode === key
                   ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'

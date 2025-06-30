@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Navigation, MapPin, AlertCircle, ZoomIn } from 'lucide-react';
+import { Navigation, AlertCircle, ZoomIn } from 'lucide-react';
 import { Route, Vehicle } from '../types';
 import { RiskCalculator } from '../utils/riskCalculator';
 import { GoogleMapComponent } from './GoogleMapComponent';
@@ -38,8 +38,8 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     setSelectedSegmentId(segmentId);
     
     // If Google Maps is available, trigger zoom
-    if (useGoogleMaps && (window as any).zoomToSegment) {
-      (window as any).zoomToSegment(segmentId);
+    if (useGoogleMaps && (window as Window & typeof globalThis).zoomToSegment) {
+      (window as Window & typeof globalThis).zoomToSegment(segmentId);
     }
   };
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Star, Edit2, Trash2, Home, Building, Warehouse, Truck, MapPin, Plus, Search, X } from 'lucide-react';
+import { Star, Edit2, Trash2, Home, Building, Warehouse, Truck, MapPin, Search, X, LucideIcon } from 'lucide-react';
 import { SavedLocation } from '../types';
 import { useSavedLocations } from '../hooks/useSavedLocations';
 
@@ -98,7 +98,7 @@ export const SavedLocationsManager: React.FC<SavedLocationsManagerProps> = ({
     return acc;
   }, {} as Record<SavedLocation['category'], SavedLocation[]>);
 
-  const categories: { key: SavedLocation['category'] | 'all'; label: string; icon: any }[] = [
+  const categories: { key: SavedLocation['category'] | 'all'; label: string; icon: LucideIcon }[] = [
     { key: 'all', label: 'All', icon: Star },
     { key: 'home', label: 'Home', icon: Home },
     { key: 'work', label: 'Work', icon: Building },

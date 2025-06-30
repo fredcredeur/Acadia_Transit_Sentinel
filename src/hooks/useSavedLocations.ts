@@ -17,7 +17,7 @@ export const useSavedLocations = () => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const locations = JSON.parse(stored).map((loc: any) => ({
+        const locations = JSON.parse(stored).map((loc: SavedLocation) => ({
           ...loc,
           createdAt: new Date(loc.createdAt),
           lastUsed: loc.lastUsed ? new Date(loc.lastUsed) : undefined,

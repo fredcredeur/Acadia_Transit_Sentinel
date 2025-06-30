@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Route, Vehicle } from '../types';
+import { Route, Vehicle, RouteSegment } from '../types';
 import { GoogleMapsService } from '../services/googleMapsService';
 import { RiskCalculator } from '../utils/riskCalculator';
-import { Eye, EyeOff, Navigation, Clock, AlertTriangle } from 'lucide-react';
+import { } from 'lucide-react';
 
 interface MultiRouteMapComponentProps {
   routes: Route[];
@@ -170,8 +170,8 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   const addRouteRiskOverlay = async (
     route: Route,
     googleRoute: google.maps.DirectionsRoute,
-    baseColor: string,
-    routeIndex: number
+    _baseColor: string,
+    _routeIndex: number
   ) => {
     if (!map) return;
 
@@ -218,7 +218,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
     });
 
     // Add critical point markers
-    route.criticalPoints?.forEach((point, pointIndex) => {
+    route.criticalPoints?.forEach((point, _pointIndex) => {
       const segment = route.segments[point.position];
       if (segment) {
         const marker = new google.maps.Marker({
@@ -265,7 +265,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
     setRiskOverlays(newRiskOverlays);
   };
 
-  const showSegmentDetails = (segment: any, riskScore: number) => {
+  const showSegmentDetails = (segment: RouteSegment, riskScore: number) => {
     // This could open a detailed segment analysis panel
     console.log('Segment details:', segment, 'Risk:', riskScore);
   };

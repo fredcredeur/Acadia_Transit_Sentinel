@@ -103,3 +103,9 @@ export interface TruckRouteRestriction {
   source: 'FHWA' | 'FMCSA' | 'State_DOT' | 'Local';
   coordinates?: { lat: number; lng: number };
 }
+
+declare global {
+  interface Window {
+    zoomToSegment: (segmentId: string) => void;
+  }
+}

@@ -2,16 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Route, Vehicle } from '../types';
 import { RiskCalculator } from '../utils/riskCalculator';
 import { 
-  BarChart3, 
   Clock, 
-  MapPin, 
-  AlertTriangle, 
-  TrendingUp, 
-  TrendingDown,
-  Equal,
   Zap,
   Shield,
-  Navigation,
   Activity
 } from 'lucide-react';
 

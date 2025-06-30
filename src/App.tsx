@@ -50,7 +50,7 @@ function App() {
     setStops(newStops);
   };
 
-  const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[]) => {
+  const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[], isLoop?: boolean) => {
   if (!useRealData) {
     setError('Google Maps integration requires API key configuration.');
     return;
@@ -63,7 +63,13 @@ function App() {
     const routeAnalysisService = new RouteAnalysisService();
     
     // Use the stops parameter if provided, otherwise fall back to current state
-    const stopsToUse = stops || [];
+    let stopsToUse = stops || [];
+
+    if (isLoop) {
+      // Add origin as the last stop for a loop route
+      stopsToUse = [...stopsToUse, { id: 'loop-return', address: origin.trim(), order: stopsToUse.length }];
+      console.log('Loop route enabled. Added origin as final stop:', origin.trim());
+    }
     
     console.log('Analyzing route with:', {
       origin,
@@ -88,7 +94,7 @@ function App() {
     setLastAnalyzedDestination(destination);
     
     // Update the stops state to match what was actually analyzed
-    setStops(stopsToUse);
+    setStops(stopsToUse); // Update App.tsx's stops state with the final stops, including the loop return
     
   } catch (err) {
     console.error('Route analysis failed:', err);

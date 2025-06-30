@@ -71,7 +71,7 @@ export class GoogleMapsService {
       this.isLoaded = true;
       
       // Make Google Maps globally available for other services
-      (window as any).google = google;
+      (window as Window & typeof globalThis).google = google;
       
       console.log('Google Maps services initialized');
     } catch (error) {
@@ -238,7 +238,7 @@ export class GoogleMapsService {
   }
 
 
-  public async getLiveTrafficData(lat: number, lng: number, radiusMeters: number = 1000): Promise<{
+  public async getLiveTrafficData(lat: number, lng: number, _radiusMeters: number = 1000): Promise<{
     congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
     averageSpeed: number;
     incidents: Array<{
@@ -269,7 +269,7 @@ export class GoogleMapsService {
         const distance = leg.distance?.value || 1;
         
         // Calculate current speed and congestion
-        const normalSpeed = (distance / duration) * 2.237; // m/s to mph
+        const _normalSpeed = (distance / duration) * 2.237; // m/s to mph
         const currentSpeed = (distance / durationInTraffic) * 2.237;
         const congestionRatio = duration / durationInTraffic;
         
@@ -392,8 +392,8 @@ export class GoogleMapsService {
 
       // Add regional bounds if provided
       if (preferredRegion) {
-        const { lat, lng, radius } = preferredRegion;
-        const radiusInDegrees = radius / 111000; // Rough conversion from meters to degrees
+        const { lat, lng, radius: _radius } = preferredRegion;
+        const radiusInDegrees = _radius / 111000; // Rough conversion from meters to degrees
         
         geocodeRequest.bounds = new google.maps.LatLngBounds(
           new google.maps.LatLng(lat - radiusInDegrees, lng - radiusInDegrees),
@@ -591,7 +591,7 @@ export class GoogleMapsService {
         if (reverseGeocode.length > 0) {
           return reverseGeocode[0].formatted_address;
         }
-      } catch (error) {
+      } catch (_error) {
         continue;
       }
     }

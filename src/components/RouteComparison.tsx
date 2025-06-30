@@ -1,5 +1,5 @@
 import React from 'react';
-import { Route as Route2, Clock, MapPin, TrendingUp, AlertTriangle, Navigation, Users, Truck } from 'lucide-react';
+import { Route as Route2, Clock, MapPin, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Route, Vehicle } from '../types';
 import { LiveTrafficIndicator } from './LiveTrafficIndicator';
 import { RiskCalculator } from '../utils/riskCalculator';

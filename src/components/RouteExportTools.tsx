@@ -1,6 +1,6 @@
 import React from 'react';
 import { Route, Vehicle } from '../types';
-import { Download, Share2, FileText, Map } from 'lucide-react';
+import { Download, Share2, FileText } from 'lucide-react';
 import { RiskCalculator } from '../utils/riskCalculator';
 
 interface RouteExportToolsProps {
