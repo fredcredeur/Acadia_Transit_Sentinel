@@ -126,6 +126,7 @@ export class RouteAnalysisService {
 
       if (request.isLoop) {
         console.log('🔄 Loop route requested. Fetching outbound and return legs.');
+        console.log(`Outbound request: Origin: ${request.origin}, Destination: ${request.destination}, Waypoints: ${waypoints.join(', ')}`);
         // Outbound journey
         const outboundResponse = await this.googleMapsService.getRoutes({
           origin: request.origin,
@@ -141,6 +142,7 @@ export class RouteAnalysisService {
           throw new Error(`No outbound route found from "${request.origin}" to "${request.destination}".`);
         }
 
+        console.log(`Return request: Origin: ${request.destination}, Destination: ${request.origin}`);
         // Return journey (destination back to origin)
         const returnResponse = await this.googleMapsService.getRoutes({
           origin: request.destination,
@@ -782,9 +784,11 @@ private formatStreetName(streetName: string): string {
       bounds: combinedBounds,
       copyrights: combinedCopyrights,
       warnings: combinedWarnings,
-      overview_polyline: { points: google.maps.geometry.encoding.encodePath(combinedOverviewPath) },
+      overview_polyline: google.maps.geometry.encoding.encodePath(combinedOverviewPath),
+
       fare: outboundRoute.fare || returnRoute.fare, // Take fare from either, if available
-      summary: `Loop: ${outboundRoute.summary || ''} & ${returnRoute.summary || ''}` // Custom summary
+      summary: (outboundRoute.summary || '') + ' & ' + (returnRoute.summary || ''),
+ 
     };
 
     return combinedDirectionsRoute;
