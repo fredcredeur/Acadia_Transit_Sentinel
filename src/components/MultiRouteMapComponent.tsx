@@ -32,15 +32,10 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   }, []);
 
   useEffect(() => {
-    if (map && routes.length > 0) {
-      displayAllRoutes();
+    if (map && routes.length > 0 && selectedRouteId) {
+      displaySelectedRoute();
     }
-  }, [map, routes]);
-
-  useEffect(() => {
-    // Show all routes by default
-    setVisibleRoutes(new Set(routes.map(r => r.id)));
-  }, [routes]);
+  }, [map, routes, selectedRouteId]);
 
   const initializeMap = async () => {
     if (!mapRef.current) return;
@@ -73,99 +68,86 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
     }
   };
 
-  const displayAllRoutes = async () => {
-    if (!map) return;
+  const displaySelectedRoute = async () => {
+    if (!map || !selectedRouteId) return;
 
-    // Clear existing renderers
+    // Clear all existing renderers
     routeRenderers.forEach(renderer => renderer.setMap(null));
     setRouteRenderers(new Map());
 
-    const newRenderers = new Map<string, google.maps.DirectionsRenderer>();
+    const selected = routes.find(r => r.id === selectedRouteId);
+    if (!selected) return;
+
     const googleMapsService = GoogleMapsService.getInstance();
 
     try {
-      // Get route data for all routes
-      const routePromises = routes.map(async (route, index) => {
-        const firstSegment = route.segments[0];
-        const lastSegment = route.segments[route.segments.length - 1];
-        
-        const origin = `${firstSegment.startLat},${firstSegment.startLng}`;
-        const destination = `${lastSegment.endLat},${lastSegment.endLng}`;
+      const firstSegment = selected.segments[0];
+      const lastSegment = selected.segments[selected.segments.length - 1];
+      
+      const origin = `${firstSegment.startLat},${firstSegment.startLng}`;
+      const destination = `${lastSegment.endLat},${lastSegment.endLng}`;
 
-        try {
-          const routeResponse = await googleMapsService.getRoutes({
-            origin,
-            destination,
-            waypoints: route.waypoints,
-            travelMode: google.maps.TravelMode.DRIVING,
-            avoidHighways: false,
-            avoidTolls: false
-          });
-
-          if (routeResponse.routes.length > 0) {
-            const color = routeColors[index % routeColors.length];
-            const isSelected = route.id === selectedRouteId;
-            
-            // Create DirectionsRenderer for this route
-            const renderer = new google.maps.DirectionsRenderer({
-              suppressMarkers: false,
-              draggable: false,
-              polylineOptions: {
-                strokeColor: color,
-                strokeOpacity: isSelected ? 1.0 : 0.6,
-                strokeWeight: isSelected ? 8 : 5,
-                zIndex: isSelected ? 10 : index + 1
-              },
-              markerOptions: {
-                icon: {
-                  path: google.maps.SymbolPath.CIRCLE,
-                  scale: isSelected ? 8 : 6,
-                  fillColor: color,
-                  fillOpacity: 1,
-                  strokeColor: '#FFFFFF',
-                  strokeWeight: 2
-                }
-              }
-            });
-
-            renderer.setMap(map);
-            renderer.setDirections(routeResponse);
-
-            // Add click listener to route polyline
-            google.maps.event.addListener(renderer, 'click', () => {
-              onRouteSelect(route.id);
-            });
-
-            newRenderers.set(route.id, renderer);
-
-            // Add route-specific overlays for risk visualization
-            await addRouteRiskOverlays(route, routeResponse.routes[0], color, index);
-          }
-        } catch (error) {
-          console.error(`Failed to load route ${route.id}:`, error);
-        }
+      const routeResponse = await googleMapsService.getRoutes({
+        origin,
+        destination,
+        waypoints: selected.waypoints,
+        travelMode: google.maps.TravelMode.DRIVING,
+        avoidHighways: false,
+        avoidTolls: false
       });
 
-      await Promise.all(routePromises);
-      setRouteRenderers(newRenderers);
-
-      // Fit map to show all routes
-      if (routes.length > 0) {
-        const bounds = new google.maps.LatLngBounds();
-        routes.forEach(route => {
-          route.segments.forEach(segment => {
-            bounds.extend(new google.maps.LatLng(segment.startLat, segment.startLng));
-            bounds.extend(new google.maps.LatLng(segment.endLat, segment.endLng));
-          });
-        });
+      if (routeResponse.routes.length > 0) {
+        const color = routeColors[0]; // Use a consistent color for the selected route
         
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
-        }
+        const renderer = new google.maps.DirectionsRenderer({
+          suppressMarkers: false,
+          draggable: false,
+          polylineOptions: {
+            strokeColor: color,
+            strokeOpacity: 1.0,
+            strokeWeight: 8,
+            zIndex: 10
+          },
+          markerOptions: {
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 8,
+              fillColor: color,
+              fillOpacity: 1,
+              strokeColor: '#FFFFFF',
+              strokeWeight: 2
+            }
+          }
+        });
+
+        renderer.setMap(map);
+        renderer.setDirections(routeResponse);
+
+        // Add click listener to route polyline
+        google.maps.event.addListener(renderer, 'click', () => {
+          onRouteSelect(selected.id);
+        });
+
+        setRouteRenderers(prev => new Map(prev).set(selected.id, renderer));
+
+        // Add route-specific overlays for risk visualization
+        await addRouteRiskOverlays(selected, routeResponse.routes[0], color, 0);
+      }
+
+      // Fit map to show the selected route
+      const bounds = new google.maps.LatLngBounds();
+      selected.segments.forEach(segment => {
+        bounds.extend(new google.maps.LatLng(segment.startLat, segment.startLng));
+        bounds.extend(new google.maps.LatLng(segment.endLat, segment.endLng));
+      });
+      
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
       }
 
     } catch (error) {
-      console.error('Failed to display routes:', error);
+      setError('Failed to display selected route. Please check your API key and route data.');
+      console.error('Failed to display selected route:', error);
     }
   };
 
@@ -296,12 +278,12 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
     }
   };
 
-  // Update styles when selection changes
-  useEffect(() => {
-    if (map && routes.length > 0) {
-      displayAllRoutes();
-    }
-  }, [selectedRouteId, map, routes]);
+  // No longer needed as displaySelectedRoute handles re-rendering
+  // useEffect(() => {
+  //   if (map && routes.length > 0) {
+  //     displayAllRoutes();
+  //   }
+  // }, [selectedRouteId, map, routes]);
 
   if (error) {
     return (
@@ -321,25 +303,23 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         <div className="absolute inset-0 bg-gray-100 dark:bg-gray-800 flex items-center justify-center z-10 rounded-lg">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-            <p className="text-gray-600 dark:text-gray-400 text-sm">Loading route comparison...</p>
+            <p className="text-gray-600 dark:text-gray-400 text-sm">Loading selected route...</p>
           </div>
         </div>
       )}
       
       <div ref={mapRef} className="w-full h-full rounded-lg" />
       
-      {/* Route Control Panel */}
+      {/* Route Control Panel - Simplified for single route display */}
       {!isLoading && !error && routes.length > 1 && (
         <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 max-w-xs">
           <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white">Route Comparison</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Toggle routes to compare</p>
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white">Route Selection</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Select a route to display</p>
           </div>
           
           <div className="p-2 space-y-2 max-h-60 overflow-y-auto">
             {routes.map((route, index) => {
-              const color = routeColors[index % routeColors.length];
-              const isVisible = visibleRoutes.has(route.id);
               const isSelected = route.id === selectedRouteId;
               const riskScore = RiskCalculator.calculateRouteRisk(route, vehicle);
               
@@ -355,10 +335,6 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div 
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: color }}
-                      />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
                           {route.name}
@@ -378,20 +354,6 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
                           {Math.round(riskScore)}%
                         </div>
                       </div>
-                      
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleRouteVisibility(route.id);
-                        }}
-                        className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
-                      >
-                        {isVisible ? (
-                          <Eye className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                        ) : (
-                          <EyeOff className="w-4 h-4 text-gray-400" />
-                        )}
-                      </button>
                     </div>
                   </div>
                   
@@ -431,12 +393,12 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       {!isLoading && !error && (
         <div className="absolute bottom-4 left-4 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
           <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Route Comparison Legend
+            Route Legend
           </div>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <div className="w-4 h-1 bg-gray-400 rounded"></div>
-              <span className="text-xs text-gray-600 dark:text-gray-400">Route Path</span>
+              <div className="w-4 h-1 bg-blue-600 rounded"></div>
+              <span className="text-xs text-gray-600 dark:text-gray-400">Selected Route</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-1 bg-amber-500 rounded"></div>
