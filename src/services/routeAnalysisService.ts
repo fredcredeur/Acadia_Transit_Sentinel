@@ -190,7 +190,7 @@ export class RouteAnalysisService {
       // Convert Google Maps routes to our Route format
       let routes = await Promise.all(
         allGoogleRoutes.map((googleRoute, index) =>
-          this.convertGoogleRouteToRoute(googleRoute, index, request.vehicle, request.stops)
+          this.convertGoogleRouteToRoute(googleRoute, index, request.vehicle, request.stops, googleRoute)
         )
       );
 
@@ -222,7 +222,7 @@ export class RouteAnalysisService {
       // Provide more helpful error messages
       if (error instanceof Error) {
         if (error.message.includes('NOT_FOUND')) {
-          throw new Error(`Address not found. Please check your addresses:\n• Origin: "${request.origin}"\n• Destination: "${request.destination}"\n\nTip: Include city and state for better results.`);
+          throw new Error(`Address not found. Please check your addresses:\n• Origin: "${request.origin}"\n•• Destination: "${request.destination}"\n\nTip: Include city and state for better results.`);
         } else if (error.message.includes('ZERO_RESULTS')) {
           throw new Error(`No route found between these locations:\n• From: "${request.origin}"\n• To: "${request.destination}"\n\nPlease verify all locations are accessible by road.`);
         } else if (error.message.includes('OVER_QUERY_LIMIT')) {
@@ -257,7 +257,8 @@ export class RouteAnalysisService {
     googleRoute: google.maps.DirectionsRoute,
     index: number,
     vehicle: Vehicle,
-    stops?: StopLocation[]
+    stops?: StopLocation[],
+    originalGoogleRoute?: google.maps.DirectionsRoute // NEW: Pass original Google Route
   ): Promise<Route> {
     const routeId = `route-${index + 1}`;
     const routeName = this.generateRouteName(googleRoute, index, stops);
@@ -305,7 +306,8 @@ export class RouteAnalysisService {
       overallRisk: 0, // Will be calculated by RiskCalculator
       criticalPoints,
       waypoints: waypoints.length > 0 ? waypoints : undefined,
-      stops
+      stops,
+      googleRoute: originalGoogleRoute // Store the original Google Route object
     };
   }
 
@@ -784,11 +786,9 @@ private formatStreetName(streetName: string): string {
       bounds: combinedBounds,
       copyrights: combinedCopyrights,
       warnings: combinedWarnings,
-      overview_polyline: google.maps.geometry.encoding.encodePath(combinedOverviewPath),
-
+      overview_polyline: { points: google.maps.geometry.encoding.encodePath(combinedOverviewPath) },
       fare: outboundRoute.fare || returnRoute.fare, // Take fare from either, if available
-      summary: (outboundRoute.summary || '') + ' & ' + (returnRoute.summary || ''),
- 
+      summary: `Loop: ${outboundRoute.summary || ''} & ${returnRoute.summary || ''}` // Custom summary
     };
 
     return combinedDirectionsRoute;

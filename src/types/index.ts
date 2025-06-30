@@ -59,6 +59,7 @@ export interface Route {
   criticalPoints: CriticalPoint[];
   waypoints?: string[]; // Added waypoints support
   stops?: StopLocation[];
+  googleRoute?: google.maps.DirectionsRoute; // Store the original Google Maps DirectionsRoute object
 }
 
 export interface CriticalPoint {
