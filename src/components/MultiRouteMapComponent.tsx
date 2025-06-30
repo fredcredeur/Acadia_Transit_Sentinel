@@ -129,9 +129,15 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         }
       });
 
+      const waypoints = selected.segments.slice(1, -1).map(segment => ({
+        location: { lat: segment.startLat, lng: segment.startLng },
+        stopover: false // Intermediate points, not necessarily stops
+      }));
+
       const routeResponse = await directionsService.route({
         origin: origin,
         destination: destination,
+        waypoints: waypoints, // Add waypoints
         travelMode: google.maps.TravelMode.DRIVING,
         avoidHighways: false,
       });
@@ -289,83 +295,6 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       
       <div ref={mapRef} className="w-full h-full rounded-lg" />
       
-      {/* Route Control Panel - Simplified for single route display */}
-      {!isLoading && !error && routes.length > 1 && (
-        <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 max-w-xs">
-          <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white">Route Selection</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Select a route to display</p>
-          </div>
-          
-          <div className="p-2 space-y-2 max-h-60 overflow-y-auto">
-            {routes.map((route, index) => {
-              const isSelected = route.id === selectedRouteId;
-              const riskScore = RiskCalculator.calculateRouteRisk(route, vehicle);
-              
-              return (
-                <div
-                  key={route.id}
-                  className={`p-2 rounded-lg border cursor-pointer transition-all ${
-                    isSelected 
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-                      : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
-                  }`}
-                  onClick={() => onRouteSelect(route.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {route.name}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {route.totalDistance}mi • {route.estimatedTime}min
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-1">
-                      <div className="text-right">
-                        <div 
-                          className="text-sm font-bold"
-                          style={{ color: RiskCalculator.getRiskColor(riskScore) }}
-                        >
-                          {Math.round(riskScore)}%
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Route stats when selected */}
-                  {isSelected && (
-                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
-                      <div className="grid grid-cols-3 gap-1 text-xs">
-                        <div className="text-center">
-                          <div className="text-gray-500 dark:text-gray-400">Distance</div>
-                          <div className="font-medium text-gray-900 dark:text-white">
-                            {route.totalDistance}mi
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-gray-500 dark:text-gray-400">Time</div>
-                          <div className="font-medium text-gray-900 dark:text-white">
-                            {route.estimatedTime}min
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="font-medium text-gray-900 dark:text-white">
-                            {route.criticalPoints?.length || 0}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Map Legend */}
       {!isLoading && !error && (
