@@ -12,9 +12,11 @@ import { DarkModeToggle } from './components/DarkModeToggle';
 import { Vehicle, Route, StopLocation } from './types';
 import { RouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
+import { useGeolocation } from './hooks/useGeolocation';
 
 function App() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const { coordinates: userLocation } = useGeolocation();
   
   const [vehicle, setVehicle] = useState<Vehicle>({
     height: 11.0,
@@ -33,8 +35,15 @@ function App() {
   const [lastAnalyzedOrigin, setLastAnalyzedOrigin] = useState('');
   const [lastAnalyzedDestination, setLastAnalyzedDestination] = useState('');
   const [stops, setStops] = useState<StopLocation[]>([]);
+  const [initialCenter, setInitialCenter] = useState({ lat: 39.8283, lng: -98.5795 });
 
   const selectedRoute = routes.find(route => route.id === selectedRouteId);
+
+  useEffect(() => {
+    if (userLocation) {
+      setInitialCenter({ lat: userLocation.lat, lng: userLocation.lng });
+    }
+  }, [userLocation]);
 
   // Check if Google Maps API key is available
   useEffect(() => {
@@ -325,6 +334,7 @@ function App() {
             vehicle={vehicle}
             onRouteSelect={setSelectedRouteId}
             className="h-[600px] rounded-lg shadow-md"
+            initialCenter={initialCenter}
           />
         ) : (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-[600px] flex items-center justify-center">

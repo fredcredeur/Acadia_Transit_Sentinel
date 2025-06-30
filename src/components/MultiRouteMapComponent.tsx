@@ -10,6 +10,7 @@ interface MultiRouteMapComponentProps {
   vehicle: Vehicle;
   onRouteSelect: (routeId: string) => void;
   className?: string;
+  initialCenter?: { lat: number; lng: number };
 }
 
 export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
@@ -17,7 +18,8 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   selectedRouteId,
   vehicle,
   onRouteSelect,
-  className = ''
+  className = '',
+  initialCenter = { lat: 39.8283, lng: -98.5795 } // Default to US center
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -57,8 +59,8 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       await googleMapsService.initialize();
 
       const newMap = new google.maps.Map(mapRef.current, {
-        center: { lat: 40.7128, lng: -74.0060 }, // Default center, can be dynamic
-        zoom: 12,
+        center: initialCenter,
+        zoom: routes.length > 0 ? 12 : 4, // Zoom in if routes are present
         mapTypeId: google.maps.MapTypeId.ROADMAP,
         styles: [
           {
