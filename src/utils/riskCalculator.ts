@@ -517,12 +517,7 @@ export class RiskCalculator {
         overallRisk,
         enhancedRiskBreakdowns: riskBreakdowns
       };
-    }).sort((a, b) => {
-      if (Math.abs(a.overallRisk - b.overallRisk) >= 5) {
-        return a.overallRisk - b.overallRisk;
-      }
-      return a.estimatedTime - b.estimatedTime;
-    });
+    }).sort((a, b) => a.overallRisk - b.overallRisk); // Sort strictly by overall risk
   }
 
   private static getVehicleSizeMultiplier(vehicle: Vehicle): number {

@@ -10,6 +10,7 @@ export interface RouteAnalysisRequest {
   stops?: StopLocation[];
   avoidHighways?: boolean;
   avoidTolls?: boolean;
+  isLoop?: boolean; // Added for loop route functionality
 }
 
 export interface RouteAnalysisResult {
@@ -121,45 +122,96 @@ export class RouteAnalysisService {
       const waypoints = request.stops?.map(stop => stop.address) || [];
       console.log('Prepared waypoints for Google Maps:', waypoints);
 
-      // Get routes with live traffic - ENHANCED
-      const routeResponse = await this.googleMapsService.getRoutes({
-        origin: request.origin,
-        destination: request.destination,
-        waypoints: waypoints.length > 0 ? waypoints : undefined,
-        travelMode: google.maps.TravelMode.DRIVING,
-        avoidHighways: request.avoidHighways,
-        avoidTolls: request.avoidTolls,
-        departureTime: new Date() // 🚦 REQUEST LIVE TRAFFIC
-      });
+      let allGoogleRoutes: google.maps.DirectionsRoute[] = [];
 
-      console.log('📊 Google Maps returned', routeResponse.routes.length, 'routes with traffic data');
+      if (request.isLoop) {
+        console.log('🔄 Loop route requested. Fetching outbound and return legs.');
+        // Outbound journey
+        const outboundResponse = await this.googleMapsService.getRoutes({
+          origin: request.origin,
+          destination: request.destination,
+          waypoints: waypoints.length > 0 ? waypoints : undefined,
+          travelMode: google.maps.TravelMode.DRIVING,
+          avoidHighways: request.avoidHighways,
+          avoidTolls: request.avoidTolls,
+          departureTime: new Date()
+        });
 
-      if (!routeResponse.routes || routeResponse.routes.length === 0) {
-        let errorMessage = `No routes found between:\n• From: "${request.origin}"\n• To: "${request.destination}"`;
-        if (waypoints.length > 0) {
-          errorMessage += `\n• Via: ${waypoints.join(', ')}`;
+        if (!outboundResponse.routes || outboundResponse.routes.length === 0) {
+          throw new Error(`No outbound route found from "${request.origin}" to "${request.destination}".`);
         }
-        errorMessage += '\n\nPlease verify all locations are accessible by road.';
-        throw new Error(errorMessage);
+
+        // Return journey (destination back to origin)
+        const returnResponse = await this.googleMapsService.getRoutes({
+          origin: request.destination,
+          destination: request.origin,
+          travelMode: google.maps.TravelMode.DRIVING,
+          avoidHighways: request.avoidHighways,
+          avoidTolls: request.avoidTolls,
+          departureTime: new Date()
+        });
+
+        if (!returnResponse.routes || returnResponse.routes.length === 0) {
+          throw new Error(`No return route found from "${request.destination}" to "${request.origin}".`);
+        }
+
+        // Combine the best outbound and best return route into a single loop route
+        const combinedRoute = this.combineRoutes(outboundResponse.routes[0], returnResponse.routes[0]);
+        allGoogleRoutes.push(combinedRoute);
+        console.log('Combined outbound and return routes for loop.');
+
+      } else {
+        // Standard one-way route
+        const routeResponse = await this.googleMapsService.getRoutes({
+          origin: request.origin,
+          destination: request.destination,
+          waypoints: waypoints.length > 0 ? waypoints : undefined,
+          travelMode: google.maps.TravelMode.DRIVING,
+          avoidHighways: request.avoidHighways,
+          avoidTolls: request.avoidTolls,
+          departureTime: new Date() // 🚦 REQUEST LIVE TRAFFIC
+        });
+
+        if (!routeResponse.routes || routeResponse.routes.length === 0) {
+          let errorMessage = `No routes found between:\n• From: "${request.origin}"\n• To: "${request.destination}"`;
+          if (waypoints.length > 0) {
+            errorMessage += `\n• Via: ${waypoints.join(', ')}`;
+          }
+          errorMessage += '\n\nPlease verify all locations are accessible by road.';
+          throw new Error(errorMessage);
+        }
+        allGoogleRoutes = routeResponse.routes;
       }
 
+      console.log('📊 Google Maps returned', allGoogleRoutes.length, 'routes with traffic data');
+
       // Convert Google Maps routes to our Route format
-      const routes = await Promise.all(
-        routeResponse.routes.map((googleRoute, index) =>
+      let routes = await Promise.all(
+        allGoogleRoutes.map((googleRoute, index) =>
           this.convertGoogleRouteToRoute(googleRoute, index, request.vehicle, request.stops)
         )
       );
 
       console.log('Converted', routes.length, 'routes, calculating risk analysis...');
 
-      // Use enhanced route comparison
-      const routesWithAnalysis = RiskCalculator.compareRoutes(routes, request.vehicle);
-      const recommendedRouteId = routesWithAnalysis[0]?.id || '';
+      // Calculate overall risk for each route
+      routes = routes.map(route => ({
+        ...route,
+        overallRisk: RiskCalculator.calculateRouteRisk(route, request.vehicle)
+      }));
+
+      // Sort routes by overall risk (lowest risk first)
+      routes.sort((a, b) => a.overallRisk - b.overallRisk);
+
+      // Ensure at least 2 routes are returned if possible, and select top 3 safest
+      const finalRoutes = routes.slice(0, Math.max(2, Math.min(3, routes.length)));
+      
+      const recommendedRouteId = finalRoutes[0]?.id || '';
 
       console.log('Route analysis complete, recommended route:', recommendedRouteId);
 
       return {
-        routes: routesWithAnalysis,
+        routes: finalRoutes,
         recommendedRouteId
       };
     } catch (error) {
@@ -368,7 +420,7 @@ export class RouteAnalysisService {
           id: `${routeId}-seg-${segmentCounter + 1}`,
           startLat: startLocation.lat(),
           startLng: startLocation.lng(),
-          endLat: endLocation.lat(),
+          endLat: endLocation.lng(),
           endLng: endLocation.lng(),
           streetName,
           riskScore: 0,
@@ -550,8 +602,6 @@ private formatStreetName(streetName: string): string {
     movementType = 'Merge into traffic';
   } else if (instructions.includes('exit') || instructions.includes('ramp')) {
     movementType = 'Take exit/ramp';
-  } else if (instructions.includes('roundabout')) {
-    movementType = 'Navigate roundabout';
   } else {
     movementType = 'Proceed';
   }
@@ -699,6 +749,45 @@ private formatStreetName(streetName: string): string {
 
   private metersToMiles(meters: number): number {
     return Math.round((meters * 0.000621371) * 10) / 10;
+  }
+
+  private combineRoutes(
+    outboundRoute: google.maps.DirectionsRoute,
+    returnRoute: google.maps.DirectionsRoute
+  ): google.maps.DirectionsRoute {
+    // Combine legs
+    const combinedLegs = [...outboundRoute.legs, ...returnRoute.legs];
+
+    // Calculate combined bounds
+    const combinedBounds = new google.maps.LatLngBounds();
+    outboundRoute.bounds && combinedBounds.union(outboundRoute.bounds);
+    returnRoute.bounds && combinedBounds.union(returnRoute.bounds);
+
+    // Combine copyrights (if any)
+    const combinedCopyrights = [...outboundRoute.copyrights, ...returnRoute.copyrights];
+
+    // Combine warnings (if any)
+    const combinedWarnings = [...outboundRoute.warnings, ...returnRoute.warnings];
+
+    // Combine overview polyline
+    const combinedOverviewPath = [
+      ...(outboundRoute.overview_path || []),
+      ...(returnRoute.overview_path || [])
+    ];
+    const combinedOverviewPolyline = new google.maps.Polyline({ path: combinedOverviewPath });
+
+    // Create a new DirectionsRoute object
+    const combinedDirectionsRoute: google.maps.DirectionsRoute = {
+      legs: combinedLegs,
+      bounds: combinedBounds,
+      copyrights: combinedCopyrights,
+      warnings: combinedWarnings,
+      overview_polyline: { points: google.maps.geometry.encoding.encodePath(combinedOverviewPath) },
+      fare: outboundRoute.fare || returnRoute.fare, // Take fare from either, if available
+      summary: `Loop: ${outboundRoute.summary || ''} & ${returnRoute.summary || ''}` // Custom summary
+    };
+
+    return combinedDirectionsRoute;
   }
 }
 

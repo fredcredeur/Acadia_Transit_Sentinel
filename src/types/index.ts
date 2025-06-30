@@ -104,6 +104,16 @@ export interface TruckRouteRestriction {
   coordinates?: { lat: number; lng: number };
 }
 
+export interface RouteAnalysisRequest {
+  origin: string;
+  destination: string;
+  vehicle: Vehicle;
+  stops?: StopLocation[];
+  avoidHighways?: boolean;
+  avoidTolls?: boolean;
+  isLoop?: boolean;
+}
+
 declare global {
   interface Window {
     zoomToSegment: (segmentId: string) => void;
