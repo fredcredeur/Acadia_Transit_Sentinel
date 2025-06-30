@@ -24,12 +24,21 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [routeRenderers, setRouteRenderers] = useState<Map<string, google.maps.DirectionsRenderer>>(new Map());
-  const [visibleRoutes, setVisibleRoutes] = useState<Set<string>>(new Set());
+  const [criticalPointMarkers, setCriticalPointMarkers] = useState<google.maps.Marker[]>([]);
+  const [riskOverlays, setRiskOverlays] = useState<google.maps.Polyline[]>([]);
   const [routeColors] = useState<string[]>(['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#9333ea']);
 
   useEffect(() => {
     initializeMap();
   }, []);
+
+  useEffect(() => {
+    // Clear all overlays when component unmounts or map changes
+    return () => {
+      criticalPointMarkers.forEach(marker => marker.setMap(null));
+      riskOverlays.forEach(overlay => overlay.setMap(null));
+    };
+  }, [map]);
 
   useEffect(() => {
     if (map && routes.length > 0 && selectedRouteId) {
@@ -71,9 +80,13 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   const displaySelectedRoute = async () => {
     if (!map || !selectedRouteId) return;
 
-    // Clear all existing renderers
+    // Clear all existing renderers, markers, and overlays
     routeRenderers.forEach(renderer => renderer.setMap(null));
     setRouteRenderers(new Map());
+    criticalPointMarkers.forEach(marker => marker.setMap(null));
+    setCriticalPointMarkers([]);
+    riskOverlays.forEach(overlay => overlay.setMap(null));
+    setRiskOverlays([]);
 
     const selected = routes.find(r => r.id === selectedRouteId);
     if (!selected) return;
@@ -97,7 +110,8 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       });
 
       if (routeResponse.routes.length > 0) {
-        const color = routeColors[0]; // Use a consistent color for the selected route
+        const routeIndex = routes.findIndex(r => r.id === selectedRouteId);
+        const color = routeColors[routeIndex % routeColors.length];
         
         const renderer = new google.maps.DirectionsRenderer({
           suppressMarkers: false,
@@ -131,7 +145,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         setRouteRenderers(prev => new Map(prev).set(selected.id, renderer));
 
         // Add route-specific overlays for risk visualization
-        await addRouteRiskOverlays(selected, routeResponse.routes[0], color, 0);
+        await addRouteRiskOverlays(selected, routeResponse.routes[0], color, routeIndex);
       }
 
       // Fit map to show the selected route
@@ -159,6 +173,9 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   ) => {
     if (!map) return;
 
+    const newCriticalPointMarkers: google.maps.Marker[] = [];
+    const newRiskOverlays: google.maps.Polyline[] = [];
+
     // Add risk-based overlays for high-risk segments
     const routePath: google.maps.LatLng[] = [];
     googleRoute.legs.forEach(leg => {
@@ -184,9 +201,10 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
             strokeColor: riskScore >= 80 ? '#dc2626' : '#f59e0b',
             strokeOpacity: 0.8,
             strokeWeight: 3,
-            zIndex: 20 + routeIndex,
+            zIndex: 20, // Fixed zIndex for selected route
             map: map
           });
+          newRiskOverlays.push(riskOverlay);
 
           // Add click listener to risk overlay
           riskOverlay.addListener('click', () => {
@@ -215,6 +233,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
           title: point.description,
           zIndex: 30
         });
+        newCriticalPointMarkers.push(marker);
 
         // Add info window for critical points
         const infoWindow = new google.maps.InfoWindow({
@@ -239,51 +258,15 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         });
       }
     });
+
+    setCriticalPointMarkers(newCriticalPointMarkers);
+    setRiskOverlays(newRiskOverlays);
   };
 
   const showSegmentDetails = (segment: any, riskScore: number) => {
     // This could open a detailed segment analysis panel
     console.log('Segment details:', segment, 'Risk:', riskScore);
   };
-
-  const toggleRouteVisibility = (routeId: string) => {
-    const newVisibleRoutes = new Set(visibleRoutes);
-    const renderer = routeRenderers.get(routeId);
-    
-    if (visibleRoutes.has(routeId)) {
-      newVisibleRoutes.delete(routeId);
-      renderer?.setMap(null);
-    } else {
-      newVisibleRoutes.add(routeId);
-      renderer?.setMap(map);
-    }
-    
-    setVisibleRoutes(newVisibleRoutes);
-  };
-
-  const updateRouteStyle = (routeId: string, isSelected: boolean) => {
-    const renderer = routeRenderers.get(routeId);
-    if (renderer) {
-      const routeIndex = routes.findIndex(r => r.id === routeId);
-      const color = routeColors[routeIndex % routeColors.length];
-      
-      renderer.setOptions({
-        polylineOptions: {
-          strokeColor: color,
-          strokeOpacity: isSelected ? 1.0 : 0.6,
-          strokeWeight: isSelected ? 8 : 5,
-          zIndex: isSelected ? 10 : routeIndex + 1
-        }
-      });
-    }
-  };
-
-  // No longer needed as displaySelectedRoute handles re-rendering
-  // useEffect(() => {
-  //   if (map && routes.length > 0) {
-  //     displayAllRoutes();
-  //   }
-  // }, [selectedRouteId, map, routes]);
 
   if (error) {
     return (
