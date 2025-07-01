@@ -119,11 +119,13 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       
       // Create stop markers
       const newStopMarkers: google.maps.Marker[] = [];
-      for (const stop of stops) {
-        const stopCoords = await geocodeAddress(stop.address);
-        if (stopCoords) {
-          const marker = createStopMarker(stopCoords, stop.order, stop.id);
-          newStopMarkers.push(marker);
+      if (stops && stops.length > 0) {
+        for (const stop of stops) {
+          const stopCoords = await geocodeAddress(stop.address);
+          if (stopCoords) {
+            const marker = createStopMarker(stopCoords, stop.order, stop.id);
+            newStopMarkers.push(marker);
+          }
         }
       }
       setStopMarkers(newStopMarkers);
@@ -138,7 +140,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       
     } catch (error) {
       console.error('Error updating map with addresses:', error);
-      setError('Failed to display addresses on map. Please check that the addresses are valid.');
+      setError(`Failed to display addresses on map: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -184,7 +186,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       
       return null;
     } catch (error) {
-      console.error(`Failed to geocode address "${address}":`, error);
+      console.warn(`Failed to geocode address "${address}":`, error);
       return null;
     }
   };
@@ -353,6 +355,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
     });
     
     // Add info window
+    const stopAddress = stops[order]?.address || 'Intermediate stop';
     const infoWindow = new google.maps.InfoWindow({
       content: `
         <div style="padding: 8px; max-width: 200px;">
@@ -360,7 +363,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             🔵 Stop ${order + 1}
           </h4>
           <p style="margin: 0 0 8px 0; color: #4B5563; font-size: 12px;">
-            ${stops[order]?.address || 'Intermediate stop'}
+            ${stopAddress}
           </p>
           <div style="padding: 4px 8px; background: #EFF6FF; border-radius: 4px; border: 1px solid #3B82F6;">
             <p style="margin: 0; color: #1E40AF; font-size: 10px; font-weight: 500;">
@@ -403,12 +406,12 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
           location: position,
           stopover: true
         };
-      }).filter(waypoint => waypoint !== null);
+      }).filter(waypoint => waypoint !== null) as google.maps.DirectionsWaypoint[];
       
       const result = await directionsService.route({
         origin: originPosition,
         destination: destinationPosition,
-        waypoints,
+        waypoints: waypoints,
         travelMode: google.maps.TravelMode.DRIVING,
         optimizeWaypoints: false
       });
@@ -443,19 +446,21 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
     const bounds = new google.maps.LatLngBounds();
     let hasPoints = false;
     
-    if (originMarker) {
+    if (originMarker && originMarker.getPosition()) {
       bounds.extend(originMarker.getPosition()!);
       hasPoints = true;
     }
     
-    if (destinationMarker) {
+    if (destinationMarker && destinationMarker.getPosition()) {
       bounds.extend(destinationMarker.getPosition()!);
       hasPoints = true;
     }
     
     stopMarkers.forEach(marker => {
-      bounds.extend(marker.getPosition()!);
-      hasPoints = true;
+      if (marker.getPosition()) {
+        bounds.extend(marker.getPosition()!);
+        hasPoints = true;
+      }
     });
     
     if (hasPoints) {
@@ -468,6 +473,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
     }
   };
 
+  // Modified to use raw coordinates instead of geocoding for marker positions
   const handleMapPointUpdate = async (type: 'origin' | 'destination', position: google.maps.LatLng) => {
     const lat = position.lat();
     const lng = position.lng();
@@ -499,7 +505,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       }, 100);
       
     } catch (error) {
-      console.warn(`Reverse geocoding failed for ${type} position, using coordinates instead:`, error);
+      console.warn('Failed to reverse geocode position, using coordinates instead:', error);
       
       // Fall back to coordinates if geocoding fails
       if (type === 'origin') {
@@ -517,6 +523,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
     }
   };
 
+  // Modified to use raw coordinates instead of geocoding for marker positions
   const handleStopUpdate = async (index: number, position: google.maps.LatLng, stopId: string) => {
     const lat = position.lat();
     const lng = position.lng();
@@ -533,41 +540,45 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       
       // Update the stop address
       const newStops = [...stops];
-      newStops[index] = {
-        ...newStops[index],
-        address: formattedAddress
-      };
-      
-      onMapUpdate(origin, destination, newStops);
-      
-      // Redraw route path after a short delay to ensure markers are updated
-      setTimeout(async () => {
-        if (originMarker && destinationMarker) {
-          await drawRoutePath();
-        }
-      }, 100);
-      
+      if (newStops[index]) {
+        newStops[index] = {
+          ...newStops[index],
+          address: formattedAddress
+        };
+        
+        onMapUpdate(origin, destination, newStops);
+        
+        // Redraw route path after a short delay to ensure markers are updated
+        setTimeout(async () => {
+          if (originMarker && destinationMarker) {
+            await drawRoutePath();
+          }
+        }, 100);
+      }
     } catch (error) {
-      console.warn(`Reverse geocoding failed for stop position, using coordinates instead:`, error);
+      console.warn('Failed to reverse geocode stop position, using coordinates instead:', error);
       
       // Fall back to coordinates if geocoding fails
       const newStops = [...stops];
-      newStops[index] = {
-        ...newStops[index],
-        address: coordString
-      };
-      
-      onMapUpdate(origin, destination, newStops);
-      
-      // Still redraw route path
-      setTimeout(async () => {
-        if (originMarker && destinationMarker) {
-          await drawRoutePath();
-        }
-      }, 100);
+      if (newStops[index]) {
+        newStops[index] = {
+          ...newStops[index],
+          address: coordString
+        };
+        
+        onMapUpdate(origin, destination, newStops);
+        
+        // Still redraw route path
+        setTimeout(async () => {
+          if (originMarker && destinationMarker) {
+            await drawRoutePath();
+          }
+        }, 100);
+      }
     }
   };
 
+  // Modified to use raw coordinates instead of geocoding for marker positions
   const handleAddStopAtLocation = async (position: google.maps.LatLng) => {
     const lat = position.lat();
     const lng = position.lng();
@@ -594,7 +605,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       onMapUpdate(origin, destination, newStops);
       
     } catch (error) {
-      console.warn('Reverse geocoding failed when adding stop, using coordinates instead:', error);
+      console.warn('Failed to reverse geocode new stop position, using coordinates instead:', error);
       
       // Fall back to coordinates if geocoding fails
       const newStop: StopLocation = {
@@ -707,7 +718,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             <div>• <strong>Drag markers</strong> to fine-tune locations</div>
             <div>• <strong>Click on map</strong> to add additional stops</div>
             <div>• <strong>Click markers</strong> for more information</div>
-            <div>• Perfect for avoiding parking lots and tight spaces</div>
+            <div>• Drag directly onto roads for precise positioning</div>
           </div>
         </div>
       )}

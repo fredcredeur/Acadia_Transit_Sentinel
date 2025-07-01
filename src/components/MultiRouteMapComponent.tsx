@@ -338,7 +338,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         setIsDragging(true);
         setDraggedPointType('waypoint');
         marker.setIcon({
-          ...marker.getIcon(),
+          ...marker.getIcon() as google.maps.Symbol,
           fillOpacity: 0.7,
           scale: 10
         });
@@ -476,7 +476,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
           setIsDragging(true);
           setDraggedPointType('critical');
           marker.setIcon({
-            ...marker.getIcon(),
+            ...marker.getIcon() as google.maps.Symbol,
             fillOpacity: 0.7,
             scale: 10
           });
@@ -725,7 +725,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
               <strong>Drag</strong> any point to fine-tune the route
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              <strong>Avoid</strong> parking lots and problem areas
+              <strong>Drag directly onto roads</strong> for precise positioning
             </p>
           </div>
         </div>
@@ -755,7 +755,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
             <div>• <strong>Green/Red circles:</strong> Drag origin/destination</div>
             <div>• <strong>Blue circles:</strong> Drag waypoints to adjust path</div>
             <div>• <strong>Warning arrows:</strong> Drag to avoid problem areas</div>
-            <div>• Perfect for avoiding parking lots and tight spaces</div>
+            <div>• Drag markers directly onto roads for precise positioning</div>
           </div>
         </div>
       )}
