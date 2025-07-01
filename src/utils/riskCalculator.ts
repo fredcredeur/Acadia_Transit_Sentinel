@@ -346,12 +346,15 @@ export class RiskCalculator {
     
     // Traffic control type matters significantly
     if (context.hasTrafficSignals) {
-      risk = 25; // Signals provide controlled environment
+      risk = 15; // Signals provide a controlled environment, which is much better for large vehicles
       if (isLargeVehicle && context.isTruckFriendly) {
-        risk = 15; // Truck-friendly signalized intersections are safest
+        risk = 10; // Truck-friendly signalized intersections are safest
       }
     } else if (context.hasStopSigns) {
-      risk = 35; // Stop signs require more caution but allow time
+      risk = 45; // Stop signs require more caution and can be difficult on busy roads
+      if(isLargeVehicle && context.type !== 'residential') {
+          risk = 65; // High penalty for stop signs on busy roads for large vehicles
+      }
     } else {
       risk = 50; // Uncontrolled intersections are highest risk
     }
@@ -473,7 +476,7 @@ export class RiskCalculator {
       mitigators.push('Truck-friendly road design with adequate width and turning radii');
     }
     
-    return { primaryConcerns: concerns, recommendations, riskMitigators: mitigators };
+    return { primaryConcerns: concerns, recommendations, mitigators };
   }
 
   // Existing methods with minor updates...
