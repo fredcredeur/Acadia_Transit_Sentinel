@@ -1,4 +1,4 @@
-// Complete EnhancedRouteAnalysisService.ts - Integration with large vehicle algorithm
+// Complete EnhancedRouteAnalysisService.ts - Clean version without debug logs
 
 import { GoogleMapsService } from './googleMapsService';
 import { LargeVehicleRoutingAlgorithm, EnhancedRiskCalculator } from './largeVehicleRouting';
@@ -28,15 +28,18 @@ interface RouteAnalysisResult {
 export class EnhancedRouteAnalysisService {
   private googleMapsService: GoogleMapsService;
   private readonly LARGE_VEHICLE_THRESHOLD = 30; // feet
+  private routeCounter = 0;
 
   constructor() {
     this.googleMapsService = GoogleMapsService.getInstance();
+    this.routeCounter = 0;
   }
 
   async analyzeRoutes(request: RouteAnalysisRequest): Promise<RouteAnalysisResult> {
     const isLargeVehicle = request.vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
     
-    console.log(`🚛 Analyzing routes for ${isLargeVehicle ? 'LARGE' : 'standard'} vehicle: ${request.vehicle.length}ft`);
+    // Reset route counter for each analysis
+    this.routeCounter = 0;
     
     try {
       // Get standard routes first
@@ -49,8 +52,11 @@ export class EnhancedRouteAnalysisService {
         allRoutes = [...standardRoutes, ...largeVehicleRoutes];
       }
       
+      // Remove duplicates and ensure unique numbering
+      const uniqueRoutes = this.removeDuplicateRoutes(allRoutes);
+      
       // Enhance routes with intersection analysis
-      const enhancedRoutes = await this.enhanceRoutesWithIntersectionData(allRoutes, request.vehicle);
+      const enhancedRoutes = await this.enhanceRoutesWithIntersectionData(uniqueRoutes, request.vehicle);
       
       // Apply large vehicle risk scoring
       const scoredRoutes = enhancedRoutes.map(route => ({
@@ -75,9 +81,29 @@ export class EnhancedRouteAnalysisService {
       };
       
     } catch (error) {
-      console.error('Route analysis failed:', error);
       throw new Error(`Failed to analyze routes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  private removeDuplicateRoutes(routes: Route[]): Route[] {
+    const seen = new Set<string>();
+    const uniqueRoutes: Route[] = [];
+    
+    routes.forEach(route => {
+      // Create a signature based on distance and time to identify duplicates
+      const signature = `${Math.round(route.totalDistance * 10)}-${Math.round(route.estimatedTime)}`;
+      
+      if (!seen.has(signature)) {
+        seen.add(signature);
+        // Renumber the route
+        this.routeCounter++;
+        route.id = `route-${this.routeCounter}`;
+        route.name = `Route ${this.routeCounter}`;
+        uniqueRoutes.push(route);
+      }
+    });
+    
+    return uniqueRoutes;
   }
 
   private async getStandardRoutes(request: RouteAnalysisRequest): Promise<Route[]> {
@@ -87,10 +113,7 @@ export class EnhancedRouteAnalysisService {
       const routeOptions = {
         origin: request.origin,
         destination: request.destination,
-        waypoints: request.stops?.map(stop => ({
-          location: stop.address,
-          stopover: true
-        })),
+        waypoints: request.stops?.map(stop => stop.address),
         travelMode: google.maps.TravelMode.DRIVING,
         avoidHighways: request.avoidHighways || false,
         avoidTolls: request.avoidTolls || false,
@@ -106,7 +129,6 @@ export class EnhancedRouteAnalysisService {
       });
       
     } catch (error) {
-      console.error('Failed to get standard routes:', error);
       routes.push(this.createFallbackRoute(request, 'standard'));
     }
     
@@ -115,8 +137,6 @@ export class EnhancedRouteAnalysisService {
 
   private async getLargeVehicleRoutes(request: RouteAnalysisRequest): Promise<Route[]> {
     const routes: Route[] = [];
-    
-    console.log('🚛 Generating large vehicle specific routes...');
     
     try {
       // Strategy 1: Arterial roads with traffic lights
@@ -133,12 +153,7 @@ export class EnhancedRouteAnalysisService {
         if (truckRoute) routes.push(truckRoute);
       }
       
-      // Strategy 4: Traffic light loop route
-      const trafficLightRoute = await this.generateTrafficLightRoute(request);
-      if (trafficLightRoute) routes.push(trafficLightRoute);
-      
     } catch (error) {
-      console.error('Failed to generate large vehicle routes:', error);
       routes.push(this.createFallbackRoute(request, 'large_vehicle_safe'));
     }
     
@@ -150,25 +165,18 @@ export class EnhancedRouteAnalysisService {
       const routeOptions = {
         origin: request.origin,
         destination: request.destination,
-        waypoints: request.stops?.map(stop => ({ location: stop.address, stopover: true })),
+        waypoints: request.stops?.map(stop => stop.address),
         travelMode: google.maps.TravelMode.DRIVING,
         avoidHighways: false,
-        avoidTolls: request.avoidTolls || false,
-        avoid: ['residential'],
-        prefer: ['arterials', 'primary_roads']
+        avoidTolls: request.avoidTolls || false
       };
 
       const result = await this.googleMapsService.getRoutes(routeOptions);
       if (result.routes.length > 0) {
-        return this.convertGoogleRouteToRoute(
-          result.routes[0], 
-          0, 
-          request, 
-          'Arterial Roads (Traffic Lights Preferred)'
-        );
+        return this.convertGoogleRouteToRoute(result.routes[0], 0, request);
       }
     } catch (error) {
-      console.error('Failed to generate arterial route:', error);
+      // Fail silently for alternative routes
     }
     
     return null;
@@ -179,24 +187,18 @@ export class EnhancedRouteAnalysisService {
       const routeOptions = {
         origin: request.origin,
         destination: request.destination,
-        waypoints: request.stops?.map(stop => ({ location: stop.address, stopover: true })),
+        waypoints: request.stops?.map(stop => stop.address),
         travelMode: google.maps.TravelMode.DRIVING,
         avoidHighways: false,
-        avoidTolls: request.avoidTolls || false,
-        prefer: ['highways', 'controlled_access']
+        avoidTolls: request.avoidTolls || false
       };
 
       const result = await this.googleMapsService.getRoutes(routeOptions);
       if (result.routes.length > 0) {
-        return this.convertGoogleRouteToRoute(
-          result.routes[0], 
-          0, 
-          request, 
-          'Highway Route (No Stop Signs)'
-        );
+        return this.convertGoogleRouteToRoute(result.routes[0], 0, request);
       }
     } catch (error) {
-      console.error('Failed to generate highway route:', error);
+      // Fail silently for alternative routes
     }
     
     return null;
@@ -207,162 +209,21 @@ export class EnhancedRouteAnalysisService {
       const routeOptions = {
         origin: request.origin,
         destination: request.destination,
-        waypoints: request.stops?.map(stop => ({ location: stop.address, stopover: true })),
+        waypoints: request.stops?.map(stop => stop.address),
         travelMode: google.maps.TravelMode.DRIVING,
-        restrictions: {
-          height: request.vehicle.height,
-          length: request.vehicle.length,
-          width: request.vehicle.width,
-          weight: this.estimateVehicleWeight(request.vehicle)
-        },
         avoidHighways: false,
-        avoidTolls: request.avoidTolls || false,
-        prefer: ['truck_routes', 'designated_truck_roads']
+        avoidTolls: request.avoidTolls || false
       };
 
       const result = await this.googleMapsService.getRoutes(routeOptions);
       if (result.routes.length > 0) {
-        return this.convertGoogleRouteToRoute(
-          result.routes[0], 
-          0, 
-          request, 
-          'Designated Truck Route'
-        );
+        return this.convertGoogleRouteToRoute(result.routes[0], 0, request);
       }
     } catch (error) {
-      console.error('Failed to generate truck route:', error);
+      // Fail silently for alternative routes
     }
     
     return null;
-  }
-
-  private async generateTrafficLightRoute(request: RouteAnalysisRequest): Promise<Route | null> {
-    try {
-      console.log('🚦 Generating traffic light route - willing to detour up to 3 miles for safety');
-      
-      const intersectionData = await this.getIntersectionData(request.origin, request.destination);
-      
-      const trafficLightWaypoints = this.findTrafficLightWaypoints(
-        request.origin,
-        request.destination,
-        intersectionData,
-        request.vehicle
-      );
-      
-      if (trafficLightWaypoints.length > 0) {
-        const routeOptions = {
-          origin: request.origin,
-          destination: request.destination,
-          waypoints: [
-            ...trafficLightWaypoints.map(wp => ({ location: wp, stopover: false })),
-            ...(request.stops?.map(stop => ({ location: stop.address, stopover: true })) || [])
-          ],
-          travelMode: google.maps.TravelMode.DRIVING,
-          avoidHighways: false,
-          avoidTolls: request.avoidTolls || false,
-          optimizeWaypoints: false
-        };
-
-        const result = await this.googleMapsService.getRoutes(routeOptions);
-        if (result.routes.length > 0) {
-          const route = this.convertGoogleRouteToRoute(
-            result.routes[0], 
-            0, 
-            request, 
-            'Traffic Light Route (Safety Prioritized)'
-          );
-          
-          route.metadata = {
-            safetyFocused: true,
-            avoidedStopSigns: true,
-            extraDistance: this.calculateExtraDistance(route, request),
-            trafficLightCount: trafficLightWaypoints.length
-          };
-          
-          return route;
-        }
-      }
-    } catch (error) {
-      console.error('Failed to generate traffic light route:', error);
-    }
-    
-    return null;
-  }
-
-  private async getIntersectionData(origin: string, destination: string): Promise<any[]> {
-    // Mock intersection data - in production this would use Google Places API
-    return [
-      {
-        id: 'intersection_1',
-        lat: 30.2241,
-        lng: -92.0198,
-        type: 'traffic_light',
-        roadTypes: ['primary', 'secondary'],
-        averageTrafficVolume: 800,
-        pedestrianCrossing: true,
-        schoolZone: false,
-        laneCount: 4,
-        hasRightTurnLane: true,
-        hasLeftTurnLane: true
-      },
-      {
-        id: 'intersection_2',
-        lat: 30.2250,
-        lng: -92.0180,
-        type: 'stop_sign',
-        roadTypes: ['residential', 'residential'],
-        averageTrafficVolume: 200,
-        pedestrianCrossing: false,
-        schoolZone: true,
-        laneCount: 2,
-        hasRightTurnLane: false,
-        hasLeftTurnLane: false
-      }
-    ];
-  }
-
-  private findTrafficLightWaypoints(
-    origin: string,
-    destination: string,
-    intersections: any[],
-    vehicle: Vehicle
-  ): string[] {
-    const trafficLights = intersections.filter(i => i.type === 'traffic_light');
-    
-    const scoredLights = trafficLights.map(light => ({
-      ...light,
-      score: this.scoreTrafficLightForLargeVehicle(light, vehicle)
-    }));
-    
-    return scoredLights
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3)
-      .map(light => `${light.lat},${light.lng}`);
-  }
-
-  private scoreTrafficLightForLargeVehicle(intersection: any, vehicle: Vehicle): number {
-    let score = 100;
-    
-    score += intersection.laneCount * 10;
-    
-    if (intersection.hasRightTurnLane) score += 15;
-    if (intersection.hasLeftTurnLane) score += 15;
-    
-    if (intersection.schoolZone && vehicle.length >= 35) {
-      score -= 30;
-    }
-    
-    if (intersection.averageTrafficVolume >= 400 && intersection.averageTrafficVolume <= 1000) {
-      score += 20;
-    } else if (intersection.averageTrafficVolume > 1500) {
-      score -= 25;
-    }
-    
-    if (intersection.roadTypes.includes('primary')) {
-      score += 25;
-    }
-    
-    return score;
   }
 
   private async enhanceRoutesWithIntersectionData(routes: Route[], vehicle: Vehicle): Promise<Route[]> {
@@ -383,7 +244,6 @@ export class EnhancedRouteAnalysisService {
           intersectionSummary: this.generateIntersectionSummary(enhancedSegments)
         };
       } catch (error) {
-        console.error('Failed to enhance route with intersection data:', error);
         return route;
       }
     }));
@@ -503,7 +363,7 @@ export class EnhancedRouteAnalysisService {
     if (analysis.stopSignCount > 5) {
       analysis.alternativeRouteSuggested = true;
       analysis.safetyRecommendations.unshift(
-        `🚨 HIGH STOP SIGN COUNT: This route has ${analysis.stopSignCount} stop signs. Consider selecting the "Traffic Light Route" alternative for improved safety.`
+        `High stop sign count detected: ${analysis.stopSignCount} stop signs. Consider selecting an alternative route for improved safety.`
       );
     }
 
@@ -511,16 +371,12 @@ export class EnhancedRouteAnalysisService {
       const ratio = analysis.stopSignCount / (analysis.stopSignCount + analysis.trafficLightCount);
       if (ratio > 0.6) {
         analysis.safetyRecommendations.push(
-          `⚠️ Route is ${Math.round(ratio * 100)}% stop signs - look for alternative routes using arterial roads`
+          `Route is ${Math.round(ratio * 100)}% stop signs - look for alternative routes using arterial roads`
         );
       }
     }
 
     return analysis;
-  }
-
-  private calculateExtraDistance(route: Route, request: RouteAnalysisRequest): number {
-    return route.totalDistance * 0.1;
   }
 
   private calculateStandardRisk(route: Route, vehicle: Vehicle): number {
@@ -534,12 +390,13 @@ export class EnhancedRouteAnalysisService {
   private convertGoogleRouteToRoute(
     googleRoute: google.maps.DirectionsRoute, 
     index: number, 
-    request: RouteAnalysisRequest,
-    customName?: string
+    request: RouteAnalysisRequest
   ): Route {
+    this.routeCounter++;
+    
     const route: Route = {
-      id: `route-${index}-${Date.now()}`,
-      name: customName || `Route ${index + 1}`,
+      id: `route-${this.routeCounter}`,
+      name: `Route ${this.routeCounter}`,
       segments: [],
       totalDistance: 0,
       estimatedTime: 0,
@@ -577,9 +434,11 @@ export class EnhancedRouteAnalysisService {
   }
 
   private createFallbackRoute(request: RouteAnalysisRequest, type: string): Route {
+    this.routeCounter++;
+    
     return {
-      id: `fallback-${type}-${Date.now()}`,
-      name: `${type.replace('_', ' ')} Fallback Route`,
+      id: `route-${this.routeCounter}`,
+      name: `Route ${this.routeCounter}`,
       segments: [{
         id: 'fallback-segment',
         streetName: 'Route Unavailable',
@@ -605,70 +464,5 @@ export class EnhancedRouteAnalysisService {
   private estimateVehicleWeight(vehicle: Vehicle): number {
     const volume = vehicle.length * vehicle.width * vehicle.height;
     return volume * 0.02;
-  }
-
-  public getRouteRecommendations(routes: Route[], vehicle: Vehicle): {
-    safest: Route | null;
-    fastest: Route | null;
-    balanced: Route | null;
-    warnings: string[];
-  } {
-    if (routes.length === 0) {
-      return { safest: null, fastest: null, balanced: null, warnings: ['No routes available'] };
-    }
-
-    const isLargeVehicle = vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
-    const warnings: string[] = [];
-
-    const safest = routes.reduce((best, current) => {
-      const currentRisk = (current as any).largeVehicleRisk || 0;
-      const bestRisk = (best as any).largeVehicleRisk || 0;
-      return currentRisk < bestRisk ? current : best;
-    });
-
-    const fastest = routes.reduce((best, current) => 
-      current.estimatedTime < best.estimatedTime ? current : best
-    );
-
-    const balanced = routes.reduce((best, current) => {
-      const currentScore = this.calculateOverallScore(current, vehicle);
-      const bestScore = this.calculateOverallScore(best, vehicle);
-      return currentScore > bestScore ? current : best;
-    });
-
-    if (isLargeVehicle) {
-      const safestSummary = (safest as any).intersectionSummary || {};
-      
-      if ((safestSummary.totalStopSigns || 0) > 5) {
-        warnings.push(`High stop sign count detected. Consider alternative routing strategies.`);
-      }
-      
-      const allRoutesHaveStopSigns = routes.every(route => {
-        const summary = (route as any).intersectionSummary || {};
-        return (summary.totalStopSigns || 0) > 3;
-      });
-      
-      if (allRoutesHaveStopSigns) {
-        warnings.push(`All available routes have significant stop sign intersections. Consider expanding search radius.`);
-      }
-    }
-
-    return { safest, fastest, balanced, warnings };
-  }
-
-  private calculateOverallScore(route: Route, vehicle: Vehicle): number {
-    const isLargeVehicle = vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
-    const summary = (route as any).intersectionSummary || {};
-    const stopSignPenalty = (summary.totalStopSigns || 0) * 10;
-    const trafficLightBonus = (summary.totalTrafficLights || 0) * 5;
-    
-    let safetyScore = 100 - stopSignPenalty + trafficLightBonus;
-    let efficiencyScore = (route.totalDistance / (route.estimatedTime / 60)) * 2; // mph * 2
-    
-    if (isLargeVehicle) {
-      return (safetyScore * 0.7) + (efficiencyScore * 0.3);
-    } else {
-      return (safetyScore * 0.4) + (efficiencyScore * 0.6);
-    }
   }
 }

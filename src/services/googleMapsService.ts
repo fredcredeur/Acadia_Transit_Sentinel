@@ -35,11 +35,8 @@ export class GoogleMapsService {
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
     
     if (!apiKey) {
-      console.warn('Google Maps API key not found in environment variables');
       throw new Error('Google Maps API key is required. Please set VITE_GOOGLE_MAPS_API_KEY in your .env file');
     }
-
-    console.log('Initializing Google Maps with API key:', apiKey.substring(0, 10) + '...');
 
     this.loader = new Loader({
       apiKey,
@@ -57,14 +54,11 @@ export class GoogleMapsService {
 
   public async initialize(): Promise<void> {
     if (this.isLoaded) {
-      console.log('Google Maps already initialized');
       return;
     }
 
     try {
-      console.log('Loading Google Maps...');
       const google = await this.loader.load();
-      console.log('Google Maps loaded successfully');
       
       this.directionsService = new google.maps.DirectionsService();
       this.geocoder = new google.maps.Geocoder();
@@ -73,9 +67,7 @@ export class GoogleMapsService {
       // Make Google Maps globally available for other services
       (window as Window & typeof globalThis).google = google;
       
-      console.log('Google Maps services initialized');
     } catch (error) {
-      console.error('Failed to load Google Maps:', error);
       throw new Error(`Failed to initialize Google Maps: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -95,7 +87,6 @@ export class GoogleMapsService {
       if (coordMatch && cleanAddress.startsWith('Current Location')) {
         const lat = parseFloat(coordMatch[1]);
         const lng = parseFloat(coordMatch[2]);
-        console.log('Using current location coordinates:', lat, lng);
         return {
           address: `${lat},${lng}`,
           coordinates: { lat, lng }
@@ -111,7 +102,6 @@ export class GoogleMapsService {
       const [latStr, lngStr] = cleanAddress.split(',');
       const lat = parseFloat(latStr.trim());
       const lng = parseFloat(lngStr.trim());
-      console.log('Using coordinate address:', lat, lng);
       return {
         address: cleanAddress,
         coordinates: { lat, lng }
@@ -119,16 +109,12 @@ export class GoogleMapsService {
     }
 
     try {
-      console.log('Validating address via geocoding:', cleanAddress);
       // Validate the address using geocoding with regional preference
       const results = await this.geocodeAddress(cleanAddress, preferredRegion);
       
       if (results.length > 0) {
         const result = results[0];
         const location = result.geometry.location;
-        
-        console.log('Address validated:', result.formatted_address);
-        console.log('Coordinates:', location.lat(), location.lng());
         
         // Return the formatted address and coordinates
         return {
@@ -140,11 +126,9 @@ export class GoogleMapsService {
         };
       }
     } catch (error) {
-      console.warn('Geocoding validation failed for:', cleanAddress, error);
       // If geocoding fails, try the original address anyway
     }
 
-    console.log('Using original address:', cleanAddress);
     return { address: cleanAddress };
   }
 
@@ -167,8 +151,6 @@ export class GoogleMapsService {
     }
 
     try {
-      console.log('🚦 Getting routes with live traffic data...');
-      
       // Validate and clean addresses
       const cleanOrigin = await this.validateAndCleanAddress(request.origin);
       const cleanDestination = await this.validateAndCleanAddress(request.destination);
@@ -187,7 +169,7 @@ export class GoogleMapsService {
                 stopover: true
               });
             } catch (error) {
-              console.warn('Skipping invalid waypoint:', waypoint, error);
+              // Skip invalid waypoints silently
             }
           }
         } else {
@@ -195,12 +177,6 @@ export class GoogleMapsService {
           googleWaypoints = request.waypoints as google.maps.DirectionsWaypoint[];
         }
       }
-
-      console.log('Route request:', {
-        origin: cleanOrigin.address,
-        destination: cleanDestination.address,
-        waypoints: googleWaypoints.length
-      });
 
       // Enhanced directions request with traffic data
       const directionsRequest: google.maps.DirectionsRequest = {
@@ -211,47 +187,18 @@ export class GoogleMapsService {
         avoidHighways: request.avoidHighways || false,
         avoidTolls: request.avoidTolls || false,
         
-        // 🚦 LIVE TRAFFIC CONFIGURATION
         drivingOptions: {
           departureTime: request.departureTime || new Date(),
           trafficModel: google.maps.TrafficModel.BEST_GUESS
         },
         
-        // Request multiple route alternatives to compare traffic
         provideRouteAlternatives: true,
-        
-        // Optimize waypoints for better traffic analysis
         optimizeWaypoints: false
       };
 
-      console.log('📡 Requesting routes with traffic model:', directionsRequest.drivingOptions?.trafficModel);
-
       return new Promise((resolve, reject) => {
         this.directionsService!.route(directionsRequest, (result, status) => {
-          console.log('Directions API response status:', status);
-          
           if (status === google.maps.DirectionsStatus.OK && result) {
-            console.log('✅ Routes received with live traffic data');
-            console.log(`📊 Found ${result.routes.length} route(s) with traffic information`);
-            
-            // Log traffic information for debugging
-            result.routes.forEach((route, index) => {
-              route.legs.forEach((leg, legIndex) => {
-                console.log(`Route ${index + 1}, Leg ${legIndex + 1}:`);
-                console.log(`  📍 ${leg.start_address} → ${leg.end_address}`);
-                console.log(`  📏 Distance: ${leg.distance?.text}`);
-                console.log(`  ⏱️ Duration: ${leg.duration?.text}`);
-                
-                // Check for traffic-aware duration
-                if (leg.duration_in_traffic) {
-                  console.log(`  🚦 Duration in traffic: ${leg.duration_in_traffic.text}`);
-                  console.log(`  ⚡ Traffic delay: ${leg.duration_in_traffic.value - leg.duration!.value} seconds`);
-                } else {
-                  console.log('  ⚠️ No traffic data available for this leg');
-                }
-              });
-            });
-            
             resolve(result);
           } else {
             let errorMessage = `Directions request failed: ${status}`;
@@ -274,13 +221,11 @@ export class GoogleMapsService {
                 break;
             }
             
-            console.error('❌ Directions request failed:', errorMessage);
             reject(new Error(errorMessage));
           }
         });
       });
     } catch (error) {
-      console.error('Error in getRoutes:', error);
       throw error;
     }
   }
@@ -313,7 +258,6 @@ export class GoogleMapsService {
         const distance = leg.distance?.value || 1;
         
         // Calculate current speed and congestion
-        const _normalSpeed = (distance / duration) * 2.237; // m/s to mph
         const currentSpeed = (distance / durationInTraffic) * 2.237;
         const congestionRatio = duration / durationInTraffic;
         
@@ -337,7 +281,6 @@ export class GoogleMapsService {
       };
       
     } catch (error) {
-      console.warn('Could not get live traffic data:', error);
       return {
         congestionLevel: 'moderate',
         averageSpeed: 25,
@@ -346,13 +289,12 @@ export class GoogleMapsService {
     }
   }
 
-  // NEW: Enhanced road data with live traffic integration
   public async getEnhancedRoadData(lat: number, lng: number): Promise<RoadData & {
     liveTraffic: {
       congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
       currentSpeed: number;
       normalSpeed: number;
-      trafficDelay: number; // seconds
+      trafficDelay: number;
     };
   }> {
     
@@ -380,21 +322,17 @@ export class GoogleMapsService {
   }
 
   public async getRoadData(lat: number, lng: number): Promise<RoadData> {
-    // This would integrate with Google Roads API and other data sources
-    // For now, we'll simulate the data based on location characteristics
     return this.simulateRoadData(lat, lng);
   }
 
   private simulateRoadData(lat: number, lng: number): RoadData {
-    // Simulate road data based on coordinates
-    // In production, this would call Google Roads API and other services
     const hash = Math.abs(lat * lng * 1000) % 100;
     
     return {
-      speedLimit: 25 + (hash % 40), // 25-65 mph
-      roadWidth: 20 + (hash % 60), // 20-80 (risk factor, not actual width)
-      pedestrianTraffic: hash % 100, // 0-100 risk factor
-      heightRestrictions: hash > 80 ? 13.5 : 0 // Occasional height restrictions
+      speedLimit: 25 + (hash % 40),
+      roadWidth: 20 + (hash % 60),
+      pedestrianTraffic: hash % 100,
+      heightRestrictions: hash > 80 ? 13.5 : 0
     };
   }
 
@@ -405,27 +343,12 @@ export class GoogleMapsService {
     return google.maps.geometry.spherical.computeDistanceBetween(point1, point2);
   }
 
-  private calculateDistanceInMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
-    const R = 3959; // Earth's radius in miles
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  }
-
   public async geocodeAddress(address: string, preferredRegion?: { lat: number; lng: number; radius: number }): Promise<google.maps.GeocoderResult[]> {
     if (!this.geocoder) {
       throw new Error('Geocoder not initialized');
     }
     
-    console.log('Geocoding address:', address, preferredRegion ? 'with regional preference' : '');
-    
     return new Promise((resolve, reject) => {
-      // Enhanced geocoding request with better regional bias
       const geocodeRequest: google.maps.GeocoderRequest = {
         address: address,
         region: 'US',
@@ -434,38 +357,22 @@ export class GoogleMapsService {
         }
       };
 
-      // Add regional bounds if provided
       if (preferredRegion) {
-        const { lat, lng, radius: _radius } = preferredRegion;
-        const radiusInDegrees = _radius / 111000; // Rough conversion from meters to degrees
+        const { lat, lng, radius } = preferredRegion;
+        const radiusInDegrees = radius / 111000;
         
         geocodeRequest.bounds = new google.maps.LatLngBounds(
           new google.maps.LatLng(lat - radiusInDegrees, lng - radiusInDegrees),
           new google.maps.LatLng(lat + radiusInDegrees, lng + radiusInDegrees)
         );
-        
-        console.log('Using regional bounds for geocoding');
       } else {
-        // Default to Louisiana/surrounding area bounds for better local results
         geocodeRequest.bounds = new google.maps.LatLngBounds(
-          new google.maps.LatLng(28.0, -95.0), // Southwest Louisiana/Texas border
-          new google.maps.LatLng(33.5, -88.0)  // Northeast Louisiana/Mississippi border
+          new google.maps.LatLng(28.0, -95.0),
+          new google.maps.LatLng(33.5, -88.0)
         );
-        
-        console.log('Using default Louisiana regional bounds');
       }
       
       this.geocoder!.geocode(geocodeRequest, (results, status) => {
-        console.log('Geocoding status:', status, 'Results:', results?.length || 0);
-        
-        if (results && results.length > 0) {
-          // Log the first few results for debugging
-          results.slice(0, 3).forEach((result, index) => {
-            const location = result.geometry.location;
-            console.log(`Result ${index + 1}:`, result.formatted_address, `(${location.lat()}, ${location.lng()})`);
-          });
-        }
-        
         if (status === google.maps.GeocoderStatus.OK && results) {
           resolve(results);
         } else {
@@ -483,7 +390,6 @@ export class GoogleMapsService {
             default:
               errorMessage = `Geocoding failed with status: ${status}`;
           }
-          console.error('Geocoding error:', errorMessage);
           reject(new Error(errorMessage));
         }
       });
@@ -495,9 +401,7 @@ export class GoogleMapsService {
   }
 
   public hasApiKey(): boolean {
-    const hasKey = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-    console.log('Has API key:', hasKey);
-    return hasKey;
+    return !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   }
 
   public async reverseGeocode(lat: number, lng: number): Promise<google.maps.GeocoderResult[]> {
@@ -528,15 +432,10 @@ export class GoogleMapsService {
     const vehicleClass = VehicleClassificationService.classifyVehicle(request.vehicle);
     const constraints = VehicleClassificationService.getRoutingConstraints(vehicleClass);
     
-    console.log('🚗 Vehicle Classification:', vehicleClass.type);
-    console.log('🛣️ Routing Constraints:', constraints);
-    
-    // For large vehicles that require block routing, modify the approach
     if (constraints.preferLoops && request.waypoints && request.waypoints.length > 0) {
       return this.getBlockRoutingWithStops(request, vehicleClass);
     }
     
-    // Standard routing with vehicle constraints
     return this.getConstrainedRoutes(request, constraints);
   }
   
@@ -548,11 +447,6 @@ export class GoogleMapsService {
     avoidHighways?: boolean;
     avoidTolls?: boolean;
   }, vehicleClass: VehicleClass): Promise<google.maps.DirectionsResult> {
-    
-    console.log('🔄 Using block routing for large vehicle');
-    
-    // For buses/large trucks, create a route that goes around blocks
-    // instead of requiring U-turns at stops
     
     const allPoints = [request.origin, ...(request.waypoints || []), request.destination];
     const optimizedWaypoints = await this.optimizeWaypointsForBlockRouting(allPoints, vehicleClass);
@@ -567,25 +461,19 @@ export class GoogleMapsService {
     points: string[], 
     vehicleClass: VehicleClass
   ): Promise<string[]> {
-    console.log('🧭 Optimizing waypoints for block routing...');
     
-    if (points.length <= 2) return points.slice(1, -1); // Remove origin/destination
+    if (points.length <= 2) return points.slice(1, -1);
     
-    // For each waypoint, try to find a nearby point that allows 
-    // for easier block navigation
     const optimizedPoints: string[] = [];
     
     for (let i = 1; i < points.length - 1; i++) {
       const waypoint = points[i];
       
       try {
-        // Geocode the waypoint to get coordinates
         const geocodeResults = await this.geocodeAddress(waypoint);
         if (geocodeResults.length > 0) {
           const location = geocodeResults[0].geometry.location;
           
-          // For large vehicles, try to find a point that's on a corner
-          // or intersection that allows for easier turning
           const optimizedPoint = await this.findOptimalApproachPoint(
             location.lat(), 
             location.lng(),
@@ -597,7 +485,6 @@ export class GoogleMapsService {
           optimizedPoints.push(waypoint);
         }
       } catch (error) {
-        console.warn('Could not optimize waypoint:', waypoint);
         optimizedPoints.push(waypoint);
       }
     }
@@ -611,24 +498,17 @@ export class GoogleMapsService {
     vehicleClass: VehicleClass
   ): Promise<string | null> {
     
-    // For large vehicles, look for nearby intersections or corners
-    // that would allow for easier block-style navigation
-    
-    const radius = vehicleClass.type === 'bus' ? 200 : 150; // meters
     const searchPoints = [
-      { lat: lat + 0.001, lng: lng }, // North
-      { lat: lat - 0.001, lng: lng }, // South  
-      { lat: lat, lng: lng + 0.001 }, // East
-      { lat: lat, lng: lng - 0.001 }, // West
-      { lat: lat + 0.0007, lng: lng + 0.0007 }, // Northeast corner
-      { lat: lat - 0.0007, lng: lng + 0.0007 }, // Southeast corner
-      { lat: lat - 0.0007, lng: lng - 0.0007 }, // Southwest corner
-      { lat: lat + 0.0007, lng: lng - 0.0007 }, // Northwest corner
+      { lat: lat + 0.001, lng: lng },
+      { lat: lat - 0.001, lng: lng },
+      { lat: lat, lng: lng + 0.001 },
+      { lat: lat, lng: lng - 0.001 },
+      { lat: lat + 0.0007, lng: lng + 0.0007 },
+      { lat: lat - 0.0007, lng: lng + 0.0007 },
+      { lat: lat - 0.0007, lng: lng - 0.0007 },
+      { lat: lat + 0.0007, lng: lng - 0.0007 },
     ];
     
-    // Return the first viable alternative point
-    // In a full implementation, this would use Google Roads API
-    // to find actual intersection points
     for (const point of searchPoints) {
       try {
         const reverseGeocode = await this.reverseGeocode(point.lat, point.lng);
@@ -651,8 +531,6 @@ export class GoogleMapsService {
     avoidTolls?: boolean;
   }, constraints: RoutingConstraints): Promise<google.maps.DirectionsResult> {
     
-    console.log('🚦 Applying routing constraints:', constraints);
-    
     // Convert string waypoints to DirectionsWaypoint format
     const googleWaypoints: google.maps.DirectionsWaypoint[] = [];
     if (request.waypoints && request.waypoints.length > 0) {
@@ -664,12 +542,11 @@ export class GoogleMapsService {
             stopover: true
           });
         } catch (error) {
-          console.warn('Skipping invalid waypoint:', waypoint, error);
+          // Skip invalid waypoints
         }
       }
     }
     
-    // Build Google Maps request with constraints
     const directionsRequest: google.maps.DirectionsRequest = {
       origin: request.origin,
       destination: request.destination,
@@ -677,7 +554,7 @@ export class GoogleMapsService {
       travelMode: google.maps.TravelMode.DRIVING,
       avoidHighways: request.avoidHighways || constraints.avoidResidential,
       avoidTolls: request.avoidTolls,
-      optimizeWaypoints: false, // Keep waypoint order for large vehicles
+      optimizeWaypoints: false,
       provideRouteAlternatives: true
     };
     
@@ -690,7 +567,6 @@ export class GoogleMapsService {
       this.directionsService.route(directionsRequest, (result, status) => {
         if (status === google.maps.DirectionsStatus.OK && result) {
           
-          // Filter routes based on vehicle constraints
           const filteredRoutes = this.filterRoutesByConstraints(result.routes, constraints);
           
           if (filteredRoutes.length > 0) {
@@ -712,32 +588,24 @@ export class GoogleMapsService {
   ): google.maps.DirectionsRoute[] {
     
     return routes.filter(route => {
-      // Check each leg and step for constraint violations
       for (const leg of route.legs) {
         for (const step of leg.steps) {
           const instructions = step.instructions.toLowerCase();
           
-          // Check for U-turn violations
           if (constraints.avoidUTurns && this.containsUTurn(instructions)) {
-            console.log('❌ Route rejected: Contains U-turn');
             return false;
           }
           
-          // Check for sharp turn violations  
           if (constraints.avoidSharpTurns && this.containsSharpTurn(instructions, constraints.maxTurnAngle)) {
-            console.log('❌ Route rejected: Contains sharp turn');
             return false;
           }
           
-          // Check for residential area violations
           if (constraints.avoidResidential && this.isResidentialArea(instructions)) {
-            console.log('❌ Route rejected: Goes through residential area');
             return false;
           }
         }
       }
       
-      console.log('✅ Route approved for vehicle constraints');
       return true;
     });
   }
@@ -754,14 +622,13 @@ export class GoogleMapsService {
   }
   
   private containsSharpTurn(instructions: string, maxAngle: number): boolean {
-    if (maxAngle >= 180) return false; // No restrictions
+    if (maxAngle >= 180) return false;
     
     const sharpTurnIndicators = [
       'sharp turn', 'sharp left', 'sharp right',
       'hairpin', 'tight turn', 'steep turn'
     ];
     
-    // If max angle is 90 degrees, avoid any "sharp" language
     if (maxAngle <= 90) {
       return sharpTurnIndicators.some(indicator => 
         instructions.includes(indicator)
