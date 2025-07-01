@@ -1,4 +1,4 @@
-// Enhanced RouteAnalysisService.ts - Fixed for large vehicle routing and duplicate prevention
+// Enhanced RouteAnalysisService.ts - Fixed for consistent risk calculations
 
 import { GoogleMapsService } from './googleMapsService';
 import { LargeVehicleRoutingAlgorithm, EnhancedRiskCalculator } from './largeVehicleRouting';
@@ -75,6 +75,9 @@ export class EnhancedRouteAnalysisService {
       // Apply consistent numbering starting from 1
       uniqueRoutes = this.applyConsistentNumbering(uniqueRoutes);
       
+      // 🔧 ENSURE CONSISTENT RISK FACTORS for all segments
+      uniqueRoutes = this.ensureConsistentRiskFactors(uniqueRoutes);
+      
       // Enhance routes with intersection analysis
       const enhancedRoutes = await this.enhanceRoutesWithIntersectionData(uniqueRoutes, request.vehicle);
       
@@ -95,7 +98,7 @@ export class EnhancedRouteAnalysisService {
         ? this.generateLargeVehicleAnalysis(finalRoutes, request.vehicle)
         : undefined;
       
-      console.log(`✅ Generated ${finalRoutes.length} unique routes optimized for vehicle type`);
+      console.log(`✅ Generated ${finalRoutes.length} unique routes with consistent risk calculations`);
       
       return {
         routes: finalRoutes,
@@ -107,6 +110,100 @@ export class EnhancedRouteAnalysisService {
       console.error('❌ Route analysis failed:', error);
       throw new Error(`Failed to analyze routes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  // 🔧 NEW: Ensure all route segments have consistent, deterministic risk factors
+  private ensureConsistentRiskFactors(routes: Route[]): Route[] {
+    return routes.map(route => ({
+      ...route,
+      segments: route.segments.map(segment => ({
+        ...segment,
+        riskFactors: this.generateDeterministicRiskFactors(segment)
+      }))
+    }));
+  }
+
+  // 🔧 DETERMINISTIC RISK FACTOR GENERATION
+  private generateDeterministicRiskFactors(segment: RouteSegment): typeof segment.riskFactors {
+    const streetName = segment.streetName.toLowerCase();
+    const description = segment.description.toLowerCase();
+    
+    // Create a unique seed based on segment characteristics
+    const seed = `${streetName}-${description}-${segment.startLat.toFixed(4)}-${segment.startLng.toFixed(4)}`;
+    
+    // Generate consistent values based on road type
+    let basePedestrianTraffic = 30;
+    let baseRoadWidth = 50;
+    let baseTrafficCongestion = 40;
+    let baseSpeedLimit = 35;
+    let baseHeightRestriction = 0;
+    
+    // Adjust base values based on road characteristics
+    if (streetName.includes('highway') || streetName.includes('interstate') || streetName.includes('freeway')) {
+      basePedestrianTraffic = 5;
+      baseRoadWidth = 20; // Lower number = wider road (less risk)
+      baseTrafficCongestion = 60;
+      baseSpeedLimit = 65;
+    } else if (streetName.includes('main') || streetName.includes('commercial') || streetName.includes('broadway')) {
+      basePedestrianTraffic = 70;
+      baseRoadWidth = 40;
+      baseTrafficCongestion = 65;
+      baseSpeedLimit = 30;
+    } else if (streetName.includes('residential') || streetName.includes('subdivision') || streetName.includes('lane')) {
+      basePedestrianTraffic = 45;
+      baseRoadWidth = 60; // Higher number = narrower road (more risk)
+      baseTrafficCongestion = 25;
+      baseSpeedLimit = 25;
+    } else if (streetName.includes('industrial') || streetName.includes('truck')) {
+      basePedestrianTraffic = 15;
+      baseRoadWidth = 25;
+      baseTrafficCongestion = 35;
+      baseSpeedLimit = 40;
+    }
+    
+    // Add school zone detection
+    if (description.includes('school')) {
+      basePedestrianTraffic += 30;
+      baseSpeedLimit = Math.min(baseSpeedLimit, 20);
+    }
+    
+    // Add bridge/height restriction detection
+    if (description.includes('bridge') || description.includes('overpass')) {
+      baseHeightRestriction = this.generateDeterministicValue(seed + '-height', 11, 14);
+    }
+    
+    // Generate small variations for realism, but keep them consistent
+    const variation = 10; // ±10% variation
+    
+    return {
+      pedestrianTraffic: Math.max(0, Math.min(100, 
+        basePedestrianTraffic + this.generateDeterministicValue(seed + '-ped', -variation, variation)
+      )),
+      roadWidth: Math.max(0, Math.min(100, 
+        baseRoadWidth + this.generateDeterministicValue(seed + '-width', -variation, variation)
+      )),
+      trafficCongestion: Math.max(0, Math.min(100, 
+        baseTrafficCongestion + this.generateDeterministicValue(seed + '-traffic', -variation, variation)
+      )),
+      speedLimit: Math.max(15, Math.min(80, 
+        baseSpeedLimit + this.generateDeterministicValue(seed + '-speed', -5, 5)
+      )),
+      heightRestriction: baseHeightRestriction
+    };
+  }
+
+  // 🔧 DETERMINISTIC VALUE GENERATOR
+  private generateDeterministicValue(seed: string, min: number = 0, max: number = 100): number {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      const char = seed.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    
+    // Normalize to 0-1 range, then scale to min-max
+    const normalized = Math.abs(hash) / 2147483647; // Max 32-bit int
+    return min + (normalized * (max - min));
   }
 
   // 🚌 BUS-SPECIFIC ROUTING: Prioritizes arterial roads with traffic lights
@@ -455,6 +552,7 @@ export class EnhancedRouteAnalysisService {
           pedestrianTraffic: Math.max(10, Math.min(90, 40 + variation.riskAdjustment)),
           roadWidth: Math.max(20, Math.min(80, 50 - variation.riskAdjustment)),
           trafficCongestion: Math.max(10, Math.min(90, 45 + (variation.riskAdjustment / 2))),
+          speedLimit: 35,
           heightRestriction: 0
         }
       }],
@@ -494,6 +592,7 @@ export class EnhancedRouteAnalysisService {
           pedestrianTraffic: 35,
           roadWidth: 40,
           trafficCongestion: 45,
+          speedLimit: 35,
           heightRestriction: 0
         }
       }],
@@ -607,7 +706,9 @@ export class EnhancedRouteAnalysisService {
     const isBus = vehicle.length >= this.BUS_THRESHOLD;
     const routeName = route.name?.toLowerCase() || '';
     
-    // Simulate intersection types based on route characteristics
+    // 🔧 DETERMINISTIC INTERSECTION ANALYSIS
+    const seed = `${segment.streetName}-${segment.startLat.toFixed(4)}-${segment.startLng.toFixed(4)}-${routeName}`;
+    
     const mockAnalysis = {
       stopSignCount: 0,
       trafficLightCount: 0,
@@ -619,23 +720,23 @@ export class EnhancedRouteAnalysisService {
 
     // Bus-optimized routes should have more traffic lights
     if (isBus && ((route as any).busOptimized || routeName.includes('arterial') || routeName.includes('highway'))) {
-      mockAnalysis.trafficLightCount = Math.floor(Math.random() * 4) + 2; // 2-5 traffic lights
-      mockAnalysis.stopSignCount = Math.floor(Math.random() * 2); // 0-1 stop signs
+      mockAnalysis.trafficLightCount = Math.floor(this.generateDeterministicValue(seed + '-tl', 2, 5));
+      mockAnalysis.stopSignCount = Math.floor(this.generateDeterministicValue(seed + '-ss', 0, 1));
     }
     // Highway routes have fewer intersections overall
     else if (routeName.includes('highway') || routeName.includes('express')) {
-      mockAnalysis.trafficLightCount = Math.floor(Math.random() * 2) + 1; // 1-2 traffic lights
+      mockAnalysis.trafficLightCount = Math.floor(this.generateDeterministicValue(seed + '-tl', 1, 2));
       mockAnalysis.stopSignCount = 0; // No stop signs on highways
     }
     // Local/residential routes have more stop signs
     else if (routeName.includes('local') || routeName.includes('residential') || segment.description?.toLowerCase().includes('residential')) {
-      mockAnalysis.stopSignCount = Math.floor(Math.random() * 4) + 2; // 2-5 stop signs
-      mockAnalysis.trafficLightCount = Math.floor(Math.random() * 2); // 0-1 traffic lights
+      mockAnalysis.stopSignCount = Math.floor(this.generateDeterministicValue(seed + '-ss', 2, 5));
+      mockAnalysis.trafficLightCount = Math.floor(this.generateDeterministicValue(seed + '-tl', 0, 1));
     }
     // Balanced routes
     else {
-      mockAnalysis.stopSignCount = Math.floor(Math.random() * 3) + 1; // 1-3 stop signs
-      mockAnalysis.trafficLightCount = Math.floor(Math.random() * 3) + 1; // 1-3 traffic lights
+      mockAnalysis.stopSignCount = Math.floor(this.generateDeterministicValue(seed + '-ss', 1, 3));
+      mockAnalysis.trafficLightCount = Math.floor(this.generateDeterministicValue(seed + '-tl', 1, 3));
     }
 
     return mockAnalysis;
@@ -802,10 +903,11 @@ export class EnhancedRouteAnalysisService {
           endLat: step.end_location.lat(),
           endLng: step.end_location.lng(),
           riskFactors: {
-            pedestrianTraffic: Math.random() * 100,
-            roadWidth: Math.random() * 100,
-            trafficCongestion: Math.random() * 100,
-            heightRestriction: Math.random() > 0.8 ? 12 + Math.random() * 3 : 0
+            pedestrianTraffic: 50, // Will be replaced by deterministic values
+            roadWidth: 50,
+            trafficCongestion: 50,
+            speedLimit: 35,
+            heightRestriction: 0
           }
         };
         route.segments.push(segment);

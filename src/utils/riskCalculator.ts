@@ -54,9 +54,98 @@ export class RiskCalculator {
     intersection: 0.20 // Highest - intersection type is crucial for buses
   };
 
+  // 🔧 DETERMINISTIC SEED GENERATOR - Creates consistent "random" values based on input
+  private static generateDeterministicValue(seed: string, min: number = 0, max: number = 100): number {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      const char = seed.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    
+    // Normalize to 0-1 range, then scale to min-max
+    const normalized = Math.abs(hash) / 2147483647; // Max 32-bit int
+    return min + (normalized * (max - min));
+  }
+
+  // 🔧 CONSISTENT RISK FACTORS - Generate deterministic risk factors based on segment characteristics
+  private static generateConsistentRiskFactors(segment: RouteSegment): typeof segment.riskFactors {
+    const streetName = segment.streetName.toLowerCase();
+    const description = segment.description.toLowerCase();
+    
+    // Create a unique seed based on segment characteristics
+    const seed = `${streetName}-${description}-${segment.startLat.toFixed(4)}-${segment.startLng.toFixed(4)}`;
+    
+    // Generate consistent values based on road type
+    let basePedestrianTraffic = 30;
+    let baseRoadWidth = 50;
+    let baseTrafficCongestion = 40;
+    let baseSpeedLimit = 35;
+    let baseHeightRestriction = 0;
+    
+    // Adjust base values based on road characteristics
+    if (streetName.includes('highway') || streetName.includes('interstate')) {
+      basePedestrianTraffic = 5;
+      baseRoadWidth = 20; // Lower number = wider road (less risk)
+      baseTrafficCongestion = 60;
+      baseSpeedLimit = 65;
+    } else if (streetName.includes('main') || streetName.includes('commercial') || streetName.includes('broadway')) {
+      basePedestrianTraffic = 70;
+      baseRoadWidth = 40;
+      baseTrafficCongestion = 65;
+      baseSpeedLimit = 30;
+    } else if (streetName.includes('residential') || streetName.includes('subdivision') || streetName.includes('lane')) {
+      basePedestrianTraffic = 45;
+      baseRoadWidth = 60; // Higher number = narrower road (more risk)
+      baseTrafficCongestion = 25;
+      baseSpeedLimit = 25;
+    } else if (streetName.includes('industrial') || streetName.includes('truck')) {
+      basePedestrianTraffic = 15;
+      baseRoadWidth = 25;
+      baseTrafficCongestion = 35;
+      baseSpeedLimit = 40;
+    }
+    
+    // Add school zone detection
+    if (description.includes('school')) {
+      basePedestrianTraffic += 30;
+      baseSpeedLimit = Math.min(baseSpeedLimit, 20);
+    }
+    
+    // Add bridge/height restriction detection
+    if (description.includes('bridge') || description.includes('overpass')) {
+      baseHeightRestriction = this.generateDeterministicValue(seed + '-height', 11, 14);
+    }
+    
+    // Generate small variations for realism, but keep them consistent
+    const variation = 10; // ±10% variation
+    
+    return {
+      pedestrianTraffic: Math.max(0, Math.min(100, 
+        basePedestrianTraffic + this.generateDeterministicValue(seed + '-ped', -variation, variation)
+      )),
+      roadWidth: Math.max(0, Math.min(100, 
+        baseRoadWidth + this.generateDeterministicValue(seed + '-width', -variation, variation)
+      )),
+      trafficCongestion: Math.max(0, Math.min(100, 
+        baseTrafficCongestion + this.generateDeterministicValue(seed + '-traffic', -variation, variation)
+      )),
+      speedLimit: Math.max(15, Math.min(80, 
+        baseSpeedLimit + this.generateDeterministicValue(seed + '-speed', -5, 5)
+      )),
+      heightRestriction: baseHeightRestriction
+    };
+  }
+
   static calculateSegmentRisk(segment: RouteSegment, vehicle: Vehicle, nextSegmentContext: RoadContext | null = null): number {
-    const roadContext = this.analyzeRoadContext(segment);
-    const enhancedBreakdown = this.calculateEnhancedRisk(segment, vehicle, roadContext, nextSegmentContext);
+    // 🔧 ENSURE CONSISTENT RISK FACTORS
+    const consistentSegment = {
+      ...segment,
+      riskFactors: this.generateConsistentRiskFactors(segment)
+    };
+    
+    const roadContext = this.analyzeRoadContext(consistentSegment);
+    const enhancedBreakdown = this.calculateEnhancedRisk(consistentSegment, vehicle, roadContext, nextSegmentContext);
     
     return enhancedBreakdown.overallRisk;
   }
@@ -621,7 +710,10 @@ export class RiskCalculator {
   static analyzeTurn(segment: RouteSegment, vehicle: Vehicle): TurnAnalysis {
     const isLargeVehicle = vehicle.length >= 35;
     const roadWidth = segment.riskFactors.roadWidth;
-    const angle = Math.random() * 60 + 60;
+    
+    // 🔧 DETERMINISTIC TURN ANALYSIS
+    const seed = `${segment.streetName}-${segment.startLat.toFixed(4)}-${segment.startLng.toFixed(4)}`;
+    const angle = this.generateDeterministicValue(seed + '-angle', 60, 120);
     const clearanceRequired = vehicle.width * 1.5 + (isLargeVehicle ? 10 : 5);
     
     let difficulty: TurnAnalysis['difficulty'] = 'easy';
