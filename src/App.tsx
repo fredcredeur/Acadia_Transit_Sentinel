@@ -10,7 +10,7 @@ import { RiskCalculator } from './utils/riskCalculator';
 import { RouteInput } from './components/RouteInput';
 import { DarkModeToggle } from './components/DarkModeToggle';
 import { Vehicle, Route, StopLocation } from './types';
-import { RouteAnalysisService } from './services/routeAnalysisService';
+import { EnhancedRouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useGeolocation } from './hooks/useGeolocation';
 import { LargeVehicleAnalysisPanel, EnhancedRouteComparison, RouteSelectionHelper } from './components/LargeVehicleComponents';
@@ -78,7 +78,7 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
 
   try {
     // Use the enhanced route analysis service
-    const routeAnalysisService = new RouteAnalysisService();
+    const routeAnalysisService = new EnhancedRouteAnalysisService();
     
     let stopsToUse = stops || [];
     if (isLoop) {
