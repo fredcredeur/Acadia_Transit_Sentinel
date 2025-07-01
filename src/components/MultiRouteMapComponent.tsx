@@ -230,8 +230,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         fillColor: '#22c55e',
         fillOpacity: 1,
         strokeColor: '#FFFFFF',
-        strokeWeight: 3,
-        anchor: new google.maps.Point(0, 0)
+        strokeWeight: 3
       },
       title: 'Origin - Drag to adjust starting point',
       zIndex: 40
@@ -248,8 +247,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         fillColor: '#ef4444',
         fillOpacity: 1,
         strokeColor: '#FFFFFF',
-        strokeWeight: 3,
-        anchor: new google.maps.Point(0, 0)
+        strokeWeight: 3
       },
       title: 'Destination - Drag to adjust end point',
       zIndex: 40
@@ -301,8 +299,16 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       let position: google.maps.LatLng;
       
       if (typeof waypoint.location === 'string') {
-        const [lat, lng] = waypoint.location.split(',').map(coord => parseFloat(coord.trim()));
-        position = new google.maps.LatLng(lat, lng);
+        // Try to parse coordinates first
+        const coordsMatch = waypoint.location.match(/^([-+]?\d*\.\d+|[-+]?\d+),([-+]?\d*\.\d+|[-+]?\d+)$/);
+        if (coordsMatch) {
+          const lat = parseFloat(coordsMatch[1]);
+          const lng = parseFloat(coordsMatch[2]);
+          position = new google.maps.LatLng(lat, lng);
+        } else {
+          // If not coordinates, skip this waypoint
+          return;
+        }
       } else if (waypoint.location && typeof waypoint.location === 'object') {
         const loc = waypoint.location as google.maps.LatLng | google.maps.LatLngLiteral;
         if ('lat' in loc && 'lng' in loc) {
@@ -324,8 +330,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
           fillColor: routeColor,
           fillOpacity: 0.9,
           strokeColor: '#FFFFFF',
-          strokeWeight: 2,
-          anchor: new google.maps.Point(0, 0)
+          strokeWeight: 2
         },
         title: `Waypoint ${index + 1} - Drag to adjust route`,
         zIndex: 35
@@ -338,7 +343,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         setIsDragging(true);
         setDraggedPointType('waypoint');
         marker.setIcon({
-          ...marker.getIcon() as google.maps.Symbol,
+          ...(marker.getIcon() as google.maps.Symbol),
           fillOpacity: 0.7,
           scale: 10
         });
@@ -359,8 +364,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
           fillColor: routeColor,
           fillOpacity: 0.9,
           strokeColor: '#FFFFFF',
-          strokeWeight: 2,
-          anchor: new google.maps.Point(0, 0)
+          strokeWeight: 2
         });
       });
 
@@ -372,11 +376,11 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
               📍 Waypoint ${index + 1}
             </h4>
             <p style="margin: 0 0 8px 0; color: #4B5563; font-size: 12px;">
-              Drag this point to fine-tune the route and avoid problem areas like parking lots.
+              Drag this point to fine-tune the route and avoid problem areas.
             </p>
             <div style="padding: 4px 8px; background: #DBEAFE; border-radius: 4px; border: 1px solid #3B82F6;">
               <p style="margin: 0; color: #1E40AF; font-size: 10px; font-weight: 500;">
-                💡 Moving waypoints will recalculate the route automatically
+                💡 Drag directly onto roads for precise positioning
               </p>
             </div>
           </div>
@@ -462,8 +466,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
             fillColor: point.riskLevel === 'critical' ? '#dc2626' : '#f59e0b',
             fillOpacity: 1,
             strokeColor: '#FFFFFF',
-            strokeWeight: 3,
-            anchor: new google.maps.Point(0, 0)
+            strokeWeight: 3
           },
           title: `${point.description} (Drag to avoid this area)`,
           zIndex: 30
@@ -476,7 +479,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
           setIsDragging(true);
           setDraggedPointType('critical');
           marker.setIcon({
-            ...marker.getIcon() as google.maps.Symbol,
+            ...(marker.getIcon() as google.maps.Symbol),
             fillOpacity: 0.7,
             scale: 10
           });
@@ -498,8 +501,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
             fillColor: point.riskLevel === 'critical' ? '#dc2626' : '#f59e0b',
             fillOpacity: 1,
             strokeColor: '#FFFFFF',
-            strokeWeight: 3,
-            anchor: new google.maps.Point(0, 0)
+            strokeWeight: 3
           });
         });
 
@@ -608,13 +610,13 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
     console.log(`Waypoint ${waypointIndex} moved to:`, newLat, newLng);
     
     // Trigger route recalculation
-    if (onRouteUpdate) {
-      const newWaypoints = route.stops?.map((stop, index) => {
+    if (onRouteUpdate && route.stops) {
+      const newWaypoints = route.stops.map((stop, index) => {
         if (index === waypointIndex) {
           return `${newLat},${newLng}`;
         }
         return stop.address;
-      }) || [];
+      });
       
       onRouteUpdate(route.id, newWaypoints);
     }
