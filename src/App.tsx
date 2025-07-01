@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
 import React, { useState, useEffect } from 'react';
 import { Shield, Truck, Map, AlertTriangle } from 'lucide-react';
 import { VehicleForm } from './components/VehicleForm';
@@ -592,7 +588,7 @@ function App() {
               <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg">
                 <Map className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">Enable Google Maps Integration</h3>
+              <h3 className="font-semibold text-blue-900 dark:text-blue-100">Enable Google Maps Integration</h3>
             </div>
             <div className="text-blue-800 dark:text-blue-200 space-y-2">
               <p>To use real Google Maps data and route analysis:</p>
@@ -640,59 +636,8 @@ function App() {
           </div>
         </div>
       </main>
-<<<<<<< HEAD
-=======
-import { useState } from 'react';
-import { MapComponent } from './components/MapComponent';
-import { RouteSelector } from './components/RouteSelector';
-import { LocationSearch } from './components/LocationSearch';
-import { RouteDetails } from './components/RouteDetails';
-import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
-import { MapProvider, useMapContext } from './contexts/MapContext';
-
-function AppContent() {
-  const { selectedRoute, setSelectedRoute } = useMapContext();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
-  };
-
-  return (
-    <div className="flex h-screen flex-col">
-      <Header toggleSidebar={toggleSidebar} />
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar isOpen={isSidebarOpen}>
-          <div className="space-y-4 p-4">
-            <LocationSearch />
-            <RouteSelector onRouteSelect={setSelectedRoute} />
-            {selectedRoute && <RouteDetails route={selectedRoute} />}
-          </div>
-        </Sidebar>
-        <main className="flex-1 relative">
-          <MapComponent />
-        </main>
-      </div>
->>>>>>> 3c24d9e62665244f95ff965ed5fc261ce073a64a
-=======
->>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
     </div>
   );
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 export default App;
-=======
-export default function App() {
-  return (
-    <MapProvider>
-      <AppContent />
-    </MapProvider>
-  );
-}
->>>>>>> 3c24d9e62665244f95ff965ed5fc261ce073a64a
-=======
-export default App;
->>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
