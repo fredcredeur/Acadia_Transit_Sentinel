@@ -489,7 +489,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         <input
           ref={inputRef}
           type="text"
-          value={internalValue} {/* 🔧 FIX: Use internalValue for display */}
+          value={internalValue}
           onChange={(e) => handleInputChange(e.target.value)}
           onFocus={handleFocus}
           onBlur={handleBlur}
