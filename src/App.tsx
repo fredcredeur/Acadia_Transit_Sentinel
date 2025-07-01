@@ -78,11 +78,16 @@ function App() {
     }
   };
 
-  const handlePlanningInputChange = (origin: string, destination: string, stops: StopLocation[]) => {
+  const handlePlanningInputChange = (origin: string, destination: string, stops: StopLocation[], loopEnabled?: boolean) => {
     setPlanningOrigin(origin);
     setPlanningDestination(destination);
     setPlanningStops(stops || []); // Ensure stops is always an array
     setPlanningMapReady(true);
+    
+    // Update loop state if provided
+    if (loopEnabled !== undefined) {
+      setIsLoop(loopEnabled);
+    }
   };
 
   const handlePlanningMapUpdate = (origin: string, destination: string, stops: StopLocation[]) => {
@@ -134,7 +139,8 @@ function App() {
         stops: stopsToUse,
         avoidHighways: false,
         avoidTolls: false,
-        prioritizeSafety: isLargeVehicle
+        prioritizeSafety: isLargeVehicle,
+        isLoop: isLoop
       });
 
       setRoutes(result.routes);
@@ -170,10 +176,10 @@ function App() {
     }));
 
     // Re-analyze the route with new waypoints
-    await handleRouteAnalysis(lastAnalyzedOrigin, lastAnalyzedDestination, newStops);
+    await handleRouteAnalysis(lastAnalyzedOrigin, lastAnalyzedDestination, newStops, isLoop);
   };
 
-  const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[], isLoop?: boolean) => {
+  const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[], loopEnabled?: boolean) => {
     if (!useRealData) {
       setError('Google Maps integration requires API key configuration.');
       return;
@@ -187,6 +193,27 @@ function App() {
       
       let stopsToUse = stops || [];
       
+      // Use the provided loop parameter if available, otherwise use the current state
+      const useLoop = loopEnabled !== undefined ? loopEnabled : isLoop;
+      
+      // Add loop stop if needed
+      if (useLoop && origin) {
+        const loopStop: StopLocation = {
+          id: 'loop-return',
+          address: origin.trim(),
+          order: stopsToUse.length,
+          estimatedStopTime: 5,
+          name: 'Return to Start'
+        };
+        
+        // Check if we already have a loop stop
+        const hasLoopStop = stopsToUse.some(stop => stop.id === 'loop-return');
+        
+        if (!hasLoopStop) {
+          stopsToUse = [...stopsToUse, loopStop];
+        }
+      }
+      
       const isLargeVehicle = vehicle.length >= 30;
       
       console.log(`Analyzing route for ${isLargeVehicle ? 'LARGE' : 'standard'} vehicle:`, {
@@ -194,7 +221,7 @@ function App() {
         destination, 
         stops: stopsToUse.map(s => ({ address: s.address, order: s.order })),
         vehicleLength: vehicle.length,
-        isLoop
+        isLoop: useLoop
       });
       
       const result = await routeAnalysisService.analyzeRoutes({
@@ -204,7 +231,8 @@ function App() {
         stops: stopsToUse,
         avoidHighways: false,
         avoidTolls: false,
-        prioritizeSafety: isLargeVehicle
+        prioritizeSafety: isLargeVehicle,
+        isLoop: useLoop
       });
 
       setRoutes(result.routes);
@@ -214,6 +242,11 @@ function App() {
       setLastAnalyzedOrigin(origin);
       setLastAnalyzedDestination(destination);
       setStops(stopsToUse);
+      
+      // Update loop state to match what was used
+      if (loopEnabled !== undefined) {
+        setIsLoop(loopEnabled);
+      }
       
     } catch (err) {
       console.error('Enhanced route analysis failed:', err);
@@ -351,6 +384,7 @@ function App() {
                   onMapUpdate={handlePlanningMapUpdate}
                   className="h-[600px] rounded-lg shadow-md"
                   initialCenter={initialCenter}
+                  isLoop={isLoop}
                 />
                 
                 {/* Analyze Button */}
@@ -370,6 +404,7 @@ function App() {
                         <>
                           <Navigation className="w-5 h-5" />
                           Analyze Routes
+                          {isLoop && <span className="ml-1">(Loop Enabled)</span>}
                         </>
                       )}
                     </button>

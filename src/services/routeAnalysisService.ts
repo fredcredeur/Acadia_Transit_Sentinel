@@ -12,6 +12,7 @@ interface RouteAnalysisRequest {
   avoidHighways?: boolean;
   avoidTolls?: boolean;
   prioritizeSafety?: boolean;
+  isLoop?: boolean;
 }
 
 interface RouteAnalysisResult {
@@ -40,6 +41,7 @@ export class EnhancedRouteAnalysisService {
     const isBus = request.vehicle.length >= this.BUS_THRESHOLD;
     
     console.log(`🚛 Analyzing routes for ${isBus ? 'BUS' : isLargeVehicle ? 'LARGE VEHICLE' : 'STANDARD VEHICLE'}: ${request.vehicle.length}ft`);
+    console.log(`🔄 Loop route: ${request.isLoop ? 'ENABLED' : 'DISABLED'}`);
     
     try {
       // First, validate and geocode the addresses to ensure they're real
@@ -215,6 +217,7 @@ export class EnhancedRouteAnalysisService {
     const routes: Route[] = [];
     
     console.log('🚌 Generating bus-optimized routes (prioritizing traffic lights)...');
+    console.log(`🔄 Loop route: ${request.isLoop ? 'ENABLED' : 'DISABLED'}`);
 
     // Strategy 1: Major arterial roads (highways and main streets with traffic lights)
     try {
@@ -279,6 +282,7 @@ export class EnhancedRouteAnalysisService {
     const routes: Route[] = [];
     
     console.log('🚛 Generating large vehicle routes...');
+    console.log(`🔄 Loop route: ${request.isLoop ? 'ENABLED' : 'DISABLED'}`);
 
     // Strategy 1: Truck-friendly route
     try {
@@ -338,6 +342,7 @@ export class EnhancedRouteAnalysisService {
     const routes: Route[] = [];
     
     console.log('🚗 Generating standard routes...');
+    console.log(`🔄 Loop route: ${request.isLoop ? 'ENABLED' : 'DISABLED'}`);
 
     // Strategy 1: Fastest route
     try {
@@ -427,15 +432,33 @@ export class EnhancedRouteAnalysisService {
   ): Promise<Route[]> {
     const routes: Route[] = [];
 
+    // Handle loop routes by setting destination to origin if isLoop is true
+    const finalDestination = request.isLoop ? request.origin : request.destination;
+    
+    // For loop routes, we need to ensure all stops are visited before returning to origin
+    let finalStops = request.stops;
+    
+    // If it's a loop route, we don't need to add the origin as a stop since it's already the destination
+    if (request.isLoop && finalStops) {
+      // Remove any existing loop-return stops
+      finalStops = finalStops.filter(stop => stop.id !== 'loop-return');
+    }
+
     const routeOptions = {
       origin: request.origin,
-      destination: request.destination,
-      waypoints: request.stops?.map(stop => stop.address),
+      destination: finalDestination,
+      waypoints: finalStops?.map(stop => stop.address),
       travelMode: google.maps.TravelMode.DRIVING,
       avoidHighways: options.avoidHighways,
       avoidTolls: options.avoidTolls,
       departureTime: new Date()
     };
+
+    console.log(`🔄 ${request.isLoop ? 'Loop route' : 'Standard route'} request:`, {
+      origin: request.origin,
+      destination: finalDestination,
+      waypoints: finalStops?.length || 0
+    });
 
     const directionsResult = await this.googleMapsService.getRoutes(routeOptions);
     
@@ -567,7 +590,7 @@ export class EnhancedRouteAnalysisService {
     request: RouteAnalysisRequest,
     originCoords: { address: string; lat: number; lng: number },
     destinationCoords: { address: string; lat: number; lng: number }
-  ): Route {
+  ): Promise<Route> {
     console.log('🆘 Creating realistic fallback route');
     
     const distance = this.calculateDistance(
@@ -619,7 +642,7 @@ export class EnhancedRouteAnalysisService {
     return routes.map((route, index) => ({
       ...route,
       id: `route-${index + 1}`,
-      name: `Route ${index + 1}`
+      name: route.name || `Route ${index + 1}`
     }));
   }
 

@@ -10,6 +10,7 @@ interface PlanningMapComponentProps {
   onMapUpdate: (origin: string, destination: string, stops: StopLocation[]) => void;
   className?: string;
   initialCenter?: { lat: number; lng: number };
+  isLoop?: boolean;
 }
 
 export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
@@ -19,7 +20,8 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
   isReady,
   onMapUpdate,
   className = '',
-  initialCenter = { lat: 30.2241, lng: -92.0198 } // Default to Lafayette, LA
+  initialCenter = { lat: 30.2241, lng: -92.0198 }, // Default to Lafayette, LA
+  isLoop = false
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -44,7 +46,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
     if (map && isReady) {
       updateMapWithAddresses();
     }
-  }, [map, origin, destination, stops, isReady]);
+  }, [map, origin, destination, stops, isReady, isLoop]);
 
   const initializeMap = async () => {
     if (!mapRef.current) {
@@ -103,7 +105,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
     if (!map) return;
 
     try {
-      console.log('Updating map with addresses:', { origin, destination, stops: stops?.length || 0 });
+      console.log('Updating map with addresses:', { origin, destination, stops: stops?.length || 0, isLoop });
       
       const googleMapsService = GoogleMapsService.getInstance();
       
@@ -127,6 +129,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
 
       const bounds = new google.maps.LatLngBounds();
       let hasValidPoints = false;
+      let originPosition: google.maps.LatLng | null = null;
 
       // Add origin marker
       if (origin) {
@@ -134,6 +137,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
           const originResults = await googleMapsService.geocodeAddress(origin);
           if (originResults.length > 0) {
             const originPos = originResults[0].geometry.location;
+            originPosition = originPos; // Store for loop route
             const originMarkerInstance = createDraggableMarker(
               originPos,
               'Origin',
@@ -206,7 +210,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
 
       // Draw route if we have origin and destination
       if (origin && destination) {
-        await drawRoutePath();
+        await drawRoutePath(originPosition);
       }
 
     } catch (error) {
@@ -391,23 +395,71 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
     }
   };
 
-  const drawRoutePath = async () => {
+  const drawRoutePath = async (originPosition: google.maps.LatLng | null = null) => {
     if (!map || !origin || !destination || !directionsRenderer) return;
 
     try {
       const googleMapsService = GoogleMapsService.getInstance();
       
       // Convert stops to waypoints
-      const waypoints = stops && Array.isArray(stops) 
+      let waypoints = stops && Array.isArray(stops) 
         ? stops.filter(stop => stop.address).map(stop => ({
             location: stop.address,
             stopover: true
           }))
         : [];
 
+      // If loop is enabled, add the origin as the final destination
+      let finalDestination = destination;
+      
+      if (isLoop && origin) {
+        console.log('🔄 Loop route enabled - adding origin as final destination');
+        finalDestination = origin;
+        
+        // Add visual indicator for loop route
+        if (originPosition) {
+          const loopMarker = new google.maps.Marker({
+            position: originPosition,
+            map,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 8,
+              fillColor: '#22c55e',
+              fillOpacity: 0.5,
+              strokeColor: '#ffffff',
+              strokeWeight: 2,
+              strokeDasharray: [2, 2] // Dashed outline
+            },
+            title: 'Return to Origin (Loop Route)',
+            zIndex: 5
+          });
+          
+          // Add to stop markers array for cleanup
+          setStopMarkers(prev => [...prev, loopMarker]);
+          
+          // Add info window
+          const infoWindow = new google.maps.InfoWindow({
+            content: `
+              <div style="padding: 8px; max-width: 200px;">
+                <h4 style="margin: 0 0 8px 0; color: #1F2937; font-size: 14px; font-weight: 600;">
+                  🔄 Loop Route
+                </h4>
+                <p style="margin: 0; color: #4B5563; font-size: 12px;">
+                  Route will return to starting point
+                </p>
+              </div>
+            `
+          });
+          
+          loopMarker.addListener('click', () => {
+            infoWindow.open(map, loopMarker);
+          });
+        }
+      }
+
       const routeRequest = {
         origin,
-        destination,
+        destination: finalDestination,
         waypoints,
         travelMode: google.maps.TravelMode.DRIVING,
         avoidHighways: false,
@@ -418,6 +470,12 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       
       if (result.routes.length > 0) {
         directionsRenderer.setDirections(result);
+        
+        // Add a visual indicator for the loop connection if needed
+        if (isLoop && originPosition) {
+          // The route already includes the return to origin
+          console.log('🔄 Loop route displayed successfully');
+        }
       }
 
     } catch (error) {
@@ -472,6 +530,9 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             <div>🟢 Green: Origin</div>
             <div>🔴 Red: Destination</div>
             <div>🟠 Yellow: Stops</div>
+            {isLoop && (
+              <div className="text-green-600 dark:text-green-400">🔄 Loop route: Returns to origin</div>
+            )}
             <div className="pt-1 border-t border-gray-200 dark:border-gray-600">
               <strong>Drag markers</strong> to adjust locations
             </div>
