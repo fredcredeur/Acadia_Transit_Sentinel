@@ -1,3 +1,12 @@
+declare global {
+  var process: {
+    env: {
+      NODE_ENV: 'development' | 'production' | 'test';
+      [key: string]: string | undefined; // Allow other env variables
+    };
+  };
+}
+
 // Fixed SmartAddressInput.tsx - Resolves state synchronization issue
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -6,6 +15,16 @@ import { SavedLocation } from '../types';
 import { useSavedLocations } from '../hooks/useSavedLocations';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { PlacesService } from '../services/placesService';
+
+// Polyfill for process.env in browser environments if not already provided by bundler
+// This ensures `process` is defined, preventing runtime errors in some setups.
+if (typeof window !== 'undefined' && typeof (window as any).process === 'undefined') {
+  (window as any).process = {
+    env: {
+      NODE_ENV: 'development', // Default to 'development' for debug info
+    },
+  };
+}
 
 interface SmartAddressInputProps {
   label: string;
