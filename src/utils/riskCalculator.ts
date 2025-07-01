@@ -43,9 +43,9 @@ export class RiskCalculator {
     intersection: 0.10          // NEW: Intersection type risk
   };
 
-  static calculateSegmentRisk(segment: RouteSegment, vehicle: Vehicle): number {
+  static calculateSegmentRisk(segment: RouteSegment, vehicle: Vehicle, nextSegmentContext: RoadContext | null = null): number {
     const roadContext = this.analyzeRoadContext(segment);
-    const enhancedBreakdown = this.calculateEnhancedRisk(segment, vehicle, roadContext);
+    const enhancedBreakdown = this.calculateEnhancedRisk(segment, vehicle, roadContext, nextSegmentContext);
     
     return enhancedBreakdown.overallRisk;
   }
@@ -53,7 +53,8 @@ export class RiskCalculator {
   static calculateEnhancedRisk(
     segment: RouteSegment, 
     vehicle: Vehicle,
-    roadContext?: RoadContext
+    roadContext: RoadContext,
+    nextSegmentContext: RoadContext | null = null
   ): EnhancedRiskBreakdown {
     
     const context = roadContext || this.analyzeRoadContext(segment);
@@ -65,7 +66,7 @@ export class RiskCalculator {
     const infrastructureRisk = this.calculateInfrastructureRisk(factors.heightRestriction, vehicle.height);
     const trafficRisk = this.calculateIntelligentTrafficRisk(factors, context);
     const roadContextRisk = this.calculateRoadContextRisk(vehicle, context);
-    const intersectionRisk = this.calculateIntersectionRisk(segment, vehicle, context);
+    const intersectionRisk = this.calculateIntersectionRisk(segment, vehicle, context, nextSegmentContext);
     
     // Apply weights with context modifiers
     const weightedRisk = 
@@ -327,14 +328,13 @@ export class RiskCalculator {
   private static calculateIntersectionRisk(
     segment: RouteSegment, 
     vehicle: Vehicle, 
-    context: RoadContext
+    context: RoadContext,
+    nextSegmentContext: RoadContext | null
   ): number {
     let risk = 0;
-    
     const isLargeVehicle = vehicle.length >= 35;
     const description = segment.description.toLowerCase();
     
-    // Intersection detection
     const hasIntersection = description.includes('turn') || 
                            description.includes('intersection') ||
                            description.includes('cross');
@@ -344,26 +344,28 @@ export class RiskCalculator {
     // Base intersection risk
     risk = 30;
     
-    // Traffic control type matters significantly
     if (context.hasTrafficSignals) {
-      risk = 15; // Signals provide a controlled environment, which is much better for large vehicles
+      risk = 15; // Prefer traffic lights
       if (isLargeVehicle && context.isTruckFriendly) {
-        risk = 10; // Truck-friendly signalized intersections are safest
+        risk = 10;
       }
     } else if (context.hasStopSigns) {
-      risk = 45; // Stop signs require more caution and can be difficult on busy roads
-      if(isLargeVehicle && context.type !== 'residential') {
-          risk = 65; // High penalty for stop signs on busy roads for large vehicles
+      risk = 45; // Base penalty for stop signs
+      // NEW: Major Road Crossing Penalty
+      // Check if we're at a stop sign and the *next* road is a major one.
+      if (nextSegmentContext && isLargeVehicle) {
+        if (nextSegmentContext.type === 'arterial' || nextSegmentContext.type === 'highway' || nextSegmentContext.type === 'commercial') {
+           risk += 35; // Add a very large penalty for crossing a busy road from a stop.
+        }
       }
     } else {
-      risk = 50; // Uncontrolled intersections are highest risk
+      risk = 50; // Uncontrolled
     }
     
-    // Context modifiers
     if (context.type === 'residential' && isLargeVehicle) {
-      risk += 25; // Large vehicles in residential intersections
+      risk += 25;
     } else if (context.type === 'highway') {
-      risk = Math.max(risk - 20, 10); // Highway interchanges are designed better
+      risk = Math.max(risk - 20, 10);
     }
     
     return Math.min(risk, 100);
@@ -490,9 +492,13 @@ export class RiskCalculator {
   static calculateRouteRisk(route: Route, vehicle: Vehicle): number {
     if (route.segments.length === 0) return 0;
 
-    const segmentRisks = route.segments.map(segment => 
-      this.calculateSegmentRisk(segment, vehicle)
-    );
+    const segmentRisks = route.segments.map((segment, index) => {
+      // Get the context of the NEXT segment to analyze the intersection
+      const nextSegment = route.segments[index + 1];
+      const nextSegmentContext = nextSegment ? this.analyzeRoadContext(nextSegment) : null;
+      // Pass the next segment's context to the risk calculator for the CURRENT segment
+      return this.calculateSegmentRisk(segment, vehicle, nextSegmentContext);
+    });
     
     const weightedRisks = segmentRisks.map(risk => {
       if (risk > 80) return risk * 1.3;
@@ -511,9 +517,11 @@ export class RiskCalculator {
   static compareRoutes(routes: Route[], vehicle: Vehicle): Route[] {
     return routes.map(route => {
       const overallRisk = this.calculateRouteRisk(route, vehicle);
-      const riskBreakdowns = route.segments.map(segment => 
-        this.calculateEnhancedRisk(segment, vehicle)
-      );
+      const riskBreakdowns = route.segments.map((segment, index) => {
+        const nextSegment = route.segments[index + 1];
+        const nextSegmentContext = nextSegment ? this.analyzeRoadContext(nextSegment) : null;
+        return this.calculateEnhancedRisk(segment, vehicle, this.analyzeRoadContext(segment), nextSegmentContext)
+      });
       
       return {
         ...route,
@@ -553,7 +561,10 @@ export class RiskCalculator {
   }
 
   static calculateDetailedRisk(segment: RouteSegment, vehicle: Vehicle): EnhancedRiskBreakdown {
-    return this.calculateEnhancedRisk(segment, vehicle);
+    // This function is called in isolation, so it won't have the 'nextSegmentContext'.
+    // That's okay, the default null value will handle it gracefully. The most accurate
+    // risk is calculated at the full route level.
+    return this.calculateEnhancedRisk(segment, vehicle, this.analyzeRoadContext(segment));
   }
 
   static analyzeTurn(segment: RouteSegment, vehicle: Vehicle): TurnAnalysis {
