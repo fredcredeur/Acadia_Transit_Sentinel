@@ -132,6 +132,25 @@ export class GoogleMapsService {
     return { address: cleanAddress };
   }
 
+  private limitWaypoints(waypoints: google.maps.DirectionsWaypoint[]): google.maps.DirectionsWaypoint[] {
+    const MAX_WAYPOINTS = 25;
+    
+    if (waypoints.length <= MAX_WAYPOINTS) {
+      return waypoints;
+    }
+
+    // If we have too many waypoints, we need to select the most important ones
+    // For now, we'll take evenly distributed waypoints across the route
+    const step = Math.ceil(waypoints.length / MAX_WAYPOINTS);
+    const limitedWaypoints: google.maps.DirectionsWaypoint[] = [];
+    
+    for (let i = 0; i < waypoints.length && limitedWaypoints.length < MAX_WAYPOINTS; i += step) {
+      limitedWaypoints.push(waypoints[i]);
+    }
+    
+    return limitedWaypoints;
+  }
+
   public async getRoutes(request: {
     origin: string;
     destination: string;
@@ -177,6 +196,9 @@ export class GoogleMapsService {
           googleWaypoints = request.waypoints as google.maps.DirectionsWaypoint[];
         }
       }
+
+      // Limit waypoints to Google Maps API maximum
+      googleWaypoints = this.limitWaypoints(googleWaypoints);
 
       // Enhanced directions request with traffic data
       const directionsRequest: google.maps.DirectionsRequest = {
@@ -547,10 +569,13 @@ export class GoogleMapsService {
       }
     }
     
+    // Limit waypoints to Google Maps API maximum
+    const limitedWaypoints = this.limitWaypoints(googleWaypoints);
+    
     const directionsRequest: google.maps.DirectionsRequest = {
       origin: request.origin,
       destination: request.destination,
-      waypoints: googleWaypoints,
+      waypoints: limitedWaypoints,
       travelMode: google.maps.TravelMode.DRIVING,
       avoidHighways: request.avoidHighways || constraints.avoidResidential,
       avoidTolls: request.avoidTolls,

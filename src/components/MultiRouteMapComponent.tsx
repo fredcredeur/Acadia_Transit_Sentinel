@@ -131,15 +131,48 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         }
       });
 
-      const waypoints = selected.segments.slice(1, -1).map(segment => ({
-        location: { lat: segment.startLat, lng: segment.startLng },
-        stopover: false // Intermediate points, not necessarily stops
-      }));
+      // Use stops from the route instead of segments as waypoints
+      let waypoints: google.maps.DirectionsWaypoint[] = [];
+      
+      if (selected.stops && selected.stops.length > 0) {
+        // Use the actual stops as waypoints, but limit to 25
+        const MAX_WAYPOINTS = 25;
+        const stopsToUse = selected.stops.slice(0, MAX_WAYPOINTS);
+        
+        waypoints = stopsToUse.map(stop => ({
+          location: { lat: stop.lat, lng: stop.lng },
+          stopover: true
+        }));
+      } else {
+        // If no stops are defined, use a limited number of segments as waypoints
+        const MAX_WAYPOINTS = 25;
+        const segmentsToUse = selected.segments.slice(1, -1); // Exclude first and last
+        
+        if (segmentsToUse.length > MAX_WAYPOINTS) {
+          // Take evenly distributed segments
+          const step = Math.ceil(segmentsToUse.length / MAX_WAYPOINTS);
+          const limitedSegments = [];
+          
+          for (let i = 0; i < segmentsToUse.length && limitedSegments.length < MAX_WAYPOINTS; i += step) {
+            limitedSegments.push(segmentsToUse[i]);
+          }
+          
+          waypoints = limitedSegments.map(segment => ({
+            location: { lat: segment.startLat, lng: segment.startLng },
+            stopover: false // Intermediate points, not necessarily stops
+          }));
+        } else {
+          waypoints = segmentsToUse.map(segment => ({
+            location: { lat: segment.startLat, lng: segment.startLng },
+            stopover: false
+          }));
+        }
+      }
 
       const routeResponse = await directionsService.route({
         origin: origin,
         destination: destination,
-        waypoints: waypoints, // Add waypoints
+        waypoints: waypoints,
         travelMode: google.maps.TravelMode.DRIVING,
         avoidHighways: false,
       });
