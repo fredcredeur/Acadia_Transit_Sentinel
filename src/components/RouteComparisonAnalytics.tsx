@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Route, Vehicle } from '../types';
 import { RiskCalculator } from '../utils/riskCalculator';
+import { RouteColorManager } from '../utils/routeColors';
 import { 
   BarChart3, 
   TrendingUp, 
@@ -51,15 +52,12 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
     current.estimatedTime < best.estimatedTime ? current : best
   );
   const safest = routeMetrics.reduce((best, current) => {
-    // If current is significantly safer, choose it
-    if (current.riskScore < best.riskScore - 2) { // 2% threshold
+    if (current.riskScore < best.riskScore - 2) {
       return current;
     }
-    // If best is significantly safer, keep it
-    if (best.riskScore < current.riskScore - 2) { // 2% threshold
+    if (best.riskScore < current.riskScore - 2) {
       return best;
     }
-    // If risk scores are very close, use critical points as tie-breaker
     if (current.criticalPoints < best.criticalPoints) {
       return current;
     }
@@ -77,12 +75,6 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
   };
 
   const selectedRoute = routeMetrics.find(r => r.id === selectedRouteId) || routeMetrics[0];
-
-  // Helper function to get route number from route name
-  const getRouteNumber = (route: Route): number => {
-    const match = route.name.match(/Route (\d+)/);
-    return match ? parseInt(match[1]) : 1;
-  };
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-100 dark:border-gray-700 transition-colors duration-300">
@@ -168,7 +160,7 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
                 <tbody>
                   {routeMetrics.map((route, index) => {
                     const isSelected = route.id === selectedRouteId;
-                    const routeColor = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#9333ea'][index % 5];
+                    const routeColor = RouteColorManager.getRouteColor(index);
                     
                     return (
                       <tr
@@ -287,7 +279,7 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
               </div>
             </div>
 
-            {/* Segment-by-Segment Comparison */}
+            {/* Risk Distribution Across Routes */}
             <div>
               <h4 className="font-medium text-gray-900 dark:text-white mb-3">
                 Risk Distribution Across Routes
@@ -295,7 +287,7 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
               
               <div className="space-y-3">
                 {routeMetrics.map((route, index) => {
-                  const routeColor = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#9333ea'][index % 5];
+                  const routeColor = RouteColorManager.getRouteColor(index);
                   const riskDistribution = route.segments.map(seg => 
                     RiskCalculator.calculateSegmentRisk(seg, vehicle)
                   );
@@ -450,7 +442,7 @@ export const RouteComparisonAnalytics: React.FC<RouteComparisonAnalyticsProps> =
               
               <div className="space-y-3">
                 {routeMetrics.map((route, index) => {
-                  const routeColor = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#9333ea'][index % 5];
+                  const routeColor = RouteColorManager.getRouteColor(index);
                   
                   let recommendation = '';
                   if (route.id === fastest.id && route.id === safest.id) {

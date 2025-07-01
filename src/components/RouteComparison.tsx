@@ -3,6 +3,7 @@ import { Route as Route2, Clock, MapPin, TrendingUp, AlertTriangle, Navigation, 
 import { Route, Vehicle } from '../types';
 import { LiveTrafficIndicator } from './LiveTrafficIndicator';
 import { RiskCalculator } from '../utils/riskCalculator';
+import { RouteColorManager } from '../utils/routeColors';
 
 interface RouteComparisonProps {
   routes: Route[];
@@ -22,18 +23,15 @@ export const RouteComparison: React.FC<RouteComparisonProps> = ({
   const isBusLength = vehicle.length >= 35 && vehicle.length <= 45;
 
   const getRouteTypeIcon = (route: Route, index: number) => {
-    // Determine route type based on characteristics
     if (route.name.toLowerCase().includes('highway')) return <Zap className="w-5 h-5" />;
     if (route.name.toLowerCase().includes('arterial')) return <Navigation className="w-5 h-5" />;
     if (route.name.toLowerCase().includes('truck')) return <Shield className="w-5 h-5" />;
     
-    // Default icons based on route position
     const icons = [<Navigation className="w-5 h-5" />, <Zap className="w-5 h-5" />, <Shield className="w-5 h-5" />, <MapPin className="w-5 h-5" />];
     return icons[index % icons.length];
   };
 
   const getRouteDescription = (route: Route, index: number) => {
-    // Generate smart descriptions based on route characteristics
     const avgSpeed = (route.totalDistance / (route.estimatedTime / 60)).toFixed(0);
     const criticalCount = route.criticalPoints?.length || 0;
     
@@ -54,7 +52,7 @@ export const RouteComparison: React.FC<RouteComparisonProps> = ({
     if (route.totalDistance < 8) features.push({ icon: MapPin, text: "Short distance", color: "text-purple-600" });
     if (criticalCount > 3) features.push({ icon: AlertTriangle, text: "Multiple alerts", color: "text-amber-600" });
     
-    return features.slice(0, 2); // Show max 2 features
+    return features.slice(0, 2);
   };
 
   return (
@@ -92,23 +90,42 @@ export const RouteComparison: React.FC<RouteComparisonProps> = ({
           {routesWithAnalysis.map((route, index) => {
             const riskScore = RiskCalculator.calculateRouteRisk(route, vehicle);
             const features = getRouteFeatures(route);
-            const routeColors = ['border-blue-500 bg-blue-50 dark:bg-blue-900/20', 'border-purple-500 bg-purple-50 dark:bg-purple-900/20', 'border-green-500 bg-green-50 dark:bg-green-900/20', 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'];
-            const routeColor = routeColors[index % routeColors.length];
+            
+            // Use consistent route colors
+            const routeColor = RouteColorManager.getRouteColor(index);
+            const routeColorLight = RouteColorManager.getRouteColorLight(index);
+            const routeColorDark = RouteColorManager.getRouteColorDark(index);
             
             return (
               <div
                 key={route.id}
                 className={`relative p-5 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:shadow-lg transform hover:-translate-y-1 ${
                   selectedRoute === route.id
-                    ? routeColor + ' shadow-md'
+                    ? 'shadow-md'
                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 bg-white dark:bg-gray-800'
                 }`}
+                style={{
+                  borderColor: selectedRoute === route.id ? routeColor : undefined,
+                  backgroundColor: selectedRoute === route.id ? routeColorLight : undefined
+                }}
                 onClick={() => onRouteSelect(route.id)}
               >
+                {/* Route Color Indicator */}
+                <div 
+                  className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
+                  style={{ backgroundColor: routeColor }}
+                />
+
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${selectedRoute === route.id ? 'bg-white/80 dark:bg-gray-800/80' : 'bg-gray-100 dark:bg-gray-700'}`}>
+                    <div 
+                      className="p-2 rounded-lg"
+                      style={{ 
+                        backgroundColor: selectedRoute === route.id ? 'rgba(255,255,255,0.8)' : routeColorLight,
+                        color: routeColorDark
+                      }}
+                    >
                       {getRouteTypeIcon(route, index)}
                     </div>
                     <div>
@@ -215,7 +232,10 @@ export const RouteComparison: React.FC<RouteComparisonProps> = ({
                 {/* Selection Indicator */}
                 {selectedRoute === route.id && (
                   <div className="absolute top-3 right-3">
-                    <div className="w-3 h-3 bg-blue-600 rounded-full animate-pulse"></div>
+                    <div 
+                      className="w-3 h-3 rounded-full animate-pulse"
+                      style={{ backgroundColor: routeColor }}
+                    />
                   </div>
                 )}
               </div>

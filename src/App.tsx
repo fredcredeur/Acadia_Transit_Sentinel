@@ -14,6 +14,7 @@ import { EnhancedRouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useGeolocation } from './hooks/useGeolocation';
 import { LargeVehicleAnalysisPanel, EnhancedRouteComparison, RouteSelectionHelper } from './components/LargeVehicleComponents';
+import { RouteColorManager } from './utils/routeColors';
 
 function App() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();
@@ -39,7 +40,6 @@ function App() {
   const [useRealData, setUseRealData] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // 🔧 FIX: Store addresses persistently and don't clear them during analysis
   const [lastAnalyzedOrigin, setLastAnalyzedOrigin] = useState('');
   const [lastAnalyzedDestination, setLastAnalyzedDestination] = useState('');
   const [stops, setStops] = useState<StopLocation[]>([]);
@@ -53,7 +53,6 @@ function App() {
     }
   }, [userLocation]);
 
-  // Check if Google Maps API key is available
   useEffect(() => {
     const hasApiKey = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
     setUseRealData(hasApiKey);
@@ -77,13 +76,9 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
   setError(null);
 
   try {
-    // Use the enhanced route analysis service
     const routeAnalysisService = new EnhancedRouteAnalysisService();
     
     let stopsToUse = stops || [];
-    
-    // 🔧 FIX: Handle loop routes properly - the loop logic is now in RouteInput
-    // The stops array already includes the loop return stop if isLoop was true
     
     const isLargeVehicle = vehicle.length >= 30;
     
@@ -109,8 +104,6 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
     setSelectedRouteId(result.recommendedRouteId);
     setLargeVehicleAnalysis(result.largeVehicleAnalysis);
     
-    // 🔧 FIX: Store the addresses IMMEDIATELY after starting analysis
-    // This prevents them from being cleared during the analysis process
     setLastAnalyzedOrigin(origin);
     setLastAnalyzedDestination(destination);
     setStops(stopsToUse);
@@ -128,7 +121,6 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
     
     let text = `${lastAnalyzedOrigin} → ${lastAnalyzedDestination}`;
     if (stops.length > 0) {
-      // Check if this is a loop route by looking for the loop return stop
       const isLoopRoute = stops.some(stop => stop.id === 'loop-return');
       if (isLoopRoute) {
         const regularStops = stops.filter(stop => stop.id !== 'loop-return');
@@ -199,7 +191,7 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
           </div>
         )}
 
-        {/* Success Banner - Show when routes have been analyzed */}
+        {/* Success Banner */}
         {useRealData && lastAnalyzedOrigin && lastAnalyzedDestination && routes.length > 0 && (
           <div className="mb-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4 transition-colors duration-300">
             <div className="flex items-center gap-2">
@@ -240,7 +232,7 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
           </div>
         ) : (
           <div className="space-y-8">
-    {/* Route Comparison Analytics - NEW */}
+    {/* Route Comparison Analytics */}
     <RouteComparisonAnalytics
       routes={routes}
       selectedRouteId={selectedRouteId}
@@ -270,7 +262,7 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
             {routes.map((route, index) => {
               const isSelected = route.id === selectedRouteId;
               const riskScore = RiskCalculator.calculateRouteRisk(route, vehicle);
-              const routeColor = ['#4299E1', '#805AD5', '#38B2AC', '#ED8936', '#E53E3E'][index % 5];
+              const routeColor = RouteColorManager.getRouteColor(index);
               
               return (
                 <button
@@ -415,8 +407,8 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
                 <Shield className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">Multi-Stop Routes</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Plan complex routes with multiple stops and comprehensive risk analysis</p>
+                <h3 className="font-semibold text-gray-900 dark:text-white">Interactive Maps</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Drag critical points to fine-tune routes and avoid problem areas</p>
               </div>
             </div>
           </div>

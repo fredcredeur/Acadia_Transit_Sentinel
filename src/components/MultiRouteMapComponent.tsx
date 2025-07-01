@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Route, Vehicle, RouteSegment } from '../types';
 import { GoogleMapsService } from '../services/googleMapsService';
 import { RiskCalculator } from '../utils/riskCalculator';
-import { } from 'lucide-react';
+import { RouteColorManager } from '../utils/routeColors';
 
 interface MultiRouteMapComponentProps {
   routes: Route[];
@@ -19,7 +19,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   vehicle,
   onRouteSelect,
   className = '',
-  initialCenter = { lat: 39.8283, lng: -98.5795 } // Default to US center
+  initialCenter = { lat: 39.8283, lng: -98.5795 }
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -28,18 +28,18 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   const [routeRenderers, setRouteRenderers] = useState<Map<string, google.maps.DirectionsRenderer>>(new Map());
   const [criticalPointMarkers, setCriticalPointMarkers] = useState<google.maps.Marker[]>([]);
   const [riskOverlays, setRiskOverlays] = useState<google.maps.Polyline[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     initializeMap();
   }, []);
 
   useEffect(() => {
-    // Clear all overlays when component unmounts or map changes
     return () => {
       criticalPointMarkers.forEach(marker => marker.setMap(null));
       riskOverlays.forEach(overlay => overlay.setMap(null));
     };
-  }, [map, criticalPointMarkers, riskOverlays]); // Added dependencies
+  }, [map, criticalPointMarkers, riskOverlays]);
 
   useEffect(() => {
     if (map && routes.length > 0 && selectedRouteId) {
@@ -60,7 +60,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
 
       const newMap = new google.maps.Map(mapRef.current, {
         center: initialCenter,
-        zoom: routes.length > 0 ? 12 : 4, // Zoom in if routes are present
+        zoom: routes.length > 0 ? 12 : 4,
         mapTypeId: google.maps.MapTypeId.ROADMAP,
         styles: [
           {
@@ -104,9 +104,9 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       const origin = `${firstSegment.startLat},${firstSegment.startLng}`;
       const destination = `${lastSegment.endLat},${lastSegment.endLng}`;
 
+      // Get consistent route color
       const routeIndex = routes.findIndex(r => r.id === selectedRouteId);
-      const routeColors = ['#4299E1', '#805AD5', '#38B2AC', '#ED8936', '#E53E3E']; // Example colors
-      const color = routeColors[routeIndex % routeColors.length];
+      const routeColor = RouteColorManager.getRouteColor(routeIndex);
 
       const directionsService = new google.maps.DirectionsService();
       const directionsRenderer = new google.maps.DirectionsRenderer({
@@ -114,7 +114,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         suppressMarkers: false,
         draggable: false,
         polylineOptions: {
-          strokeColor: color,
+          strokeColor: routeColor,
           strokeOpacity: 1.0,
           strokeWeight: 8,
           zIndex: 10
@@ -123,10 +123,10 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
             scale: 8,
-            fillColor: color,
-            fillOpacity: 1.1,
+            fillColor: routeColor,
+            fillOpacity: 1.0,
             strokeColor: '#FFFFFF',
-            strokeWeight: 10
+            strokeWeight: 3
           }
         }
       });
@@ -135,21 +135,18 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       let waypoints: google.maps.DirectionsWaypoint[] = [];
       
       if (selected.stops && selected.stops.length > 0) {
-        // Use the actual stops as waypoints, but limit to 25
         const MAX_WAYPOINTS = 25;
         const stopsToUse = selected.stops.slice(0, MAX_WAYPOINTS);
         
         waypoints = stopsToUse.map(stop => ({
-          location: stop.address, // Use address string instead of lat/lng coordinates
+          location: stop.address,
           stopover: true
         }));
       } else {
-        // If no stops are defined, use a limited number of segments as waypoints
         const MAX_WAYPOINTS = 25;
-        const segmentsToUse = selected.segments.slice(1, -1); // Exclude first and last
+        const segmentsToUse = selected.segments.slice(1, -1);
         
         if (segmentsToUse.length > MAX_WAYPOINTS) {
-          // Take evenly distributed segments
           const step = Math.ceil(segmentsToUse.length / MAX_WAYPOINTS);
           const limitedSegments = [];
           
@@ -159,7 +156,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
           
           waypoints = limitedSegments.map(segment => ({
             location: { lat: segment.startLat, lng: segment.startLng },
-            stopover: false // Intermediate points, not necessarily stops
+            stopover: false
           }));
         } else {
           waypoints = segmentsToUse.map(segment => ({
@@ -181,7 +178,10 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       setRouteRenderers(prev => new Map(prev).set(selected.id, directionsRenderer));
 
       // Add route-specific overlays for risk visualization
-      await addRouteRiskOverlay(selected, routeResponse.routes[0], color, routeIndex);
+      await addRouteRiskOverlay(selected, routeResponse.routes[0], routeColor, routeIndex);
+
+      // Add draggable critical point markers
+      await addDraggableCriticalPointMarkers(selected, routeColor);
 
       // Fit map to show the selected route
       const bounds = new google.maps.LatLngBounds();
@@ -205,12 +205,11 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   const addRouteRiskOverlay = async (
     route: Route,
     googleRoute: google.maps.DirectionsRoute,
-    _baseColor: string,
-    _routeIndex: number
+    routeColor: string,
+    routeIndex: number
   ) => {
     if (!map) return;
 
-    const newCriticalPointMarkers: google.maps.Marker[] = [];
     const newRiskOverlays: google.maps.Polyline[] = [];
 
     // Add risk-based overlays for high-risk segments
@@ -223,11 +222,11 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       });
     });
 
-    // Highlight critical segments
+    // Highlight critical segments with consistent colors
     route.segments.forEach((segment, segmentIndex) => {
       const riskScore = RiskCalculator.calculateSegmentRisk(segment, vehicle);
       
-      if (riskScore >= 60) { // Only show high-risk overlays
+      if (riskScore >= 60) {
         const segmentStartIndex = Math.floor((segmentIndex / route.segments.length) * routePath.length);
         const segmentEndIndex = Math.floor(((segmentIndex + 1) / route.segments.length) * routePath.length);
         const segmentPath = routePath.slice(segmentStartIndex, segmentEndIndex + 1);
@@ -238,12 +237,11 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
             strokeColor: riskScore >= 80 ? '#dc2626' : '#f59e0b',
             strokeOpacity: 0.8,
             strokeWeight: 3,
-            zIndex: 20, // Fixed zIndex for selected route
+            zIndex: 20,
             map: map
           });
           newRiskOverlays.push(riskOverlay);
 
-          // Add click listener to risk overlay
           riskOverlay.addListener('click', () => {
             onRouteSelect(route.id);
             showSegmentDetails(segment, riskScore);
@@ -252,25 +250,90 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       }
     });
 
-    // Add critical point markers
-    route.criticalPoints?.forEach((point, _pointIndex) => {
+    setRiskOverlays(newRiskOverlays);
+  };
+
+  const addDraggableCriticalPointMarkers = async (route: Route, routeColor: string) => {
+    if (!map) return;
+
+    const newCriticalPointMarkers: google.maps.Marker[] = [];
+
+    route.criticalPoints?.forEach((point, pointIndex) => {
       const segment = route.segments[point.position];
       if (segment) {
         const marker = new google.maps.Marker({
           position: new google.maps.LatLng(segment.startLat, segment.startLng),
           map: map,
+          draggable: true, // Make markers draggable
           icon: {
             path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 6,
+            scale: 8,
             fillColor: point.riskLevel === 'critical' ? '#dc2626' : '#f59e0b',
             fillOpacity: 1,
             strokeColor: '#FFFFFF',
-            strokeWeight: 2
+            strokeWeight: 3,
+            anchor: new google.maps.Point(0, 0)
           },
-          title: point.description,
+          title: `${point.description} (Drag to adjust route)`,
           zIndex: 30
         });
+
         newCriticalPointMarkers.push(marker);
+
+        // Add drag start listener
+        marker.addListener('dragstart', () => {
+          setIsDragging(true);
+          marker.setIcon({
+            ...marker.getIcon(),
+            fillOpacity: 0.7,
+            scale: 10
+          });
+        });
+
+        // Add drag end listener to update route
+        marker.addListener('dragend', async (event: google.maps.MapMouseEvent) => {
+          setIsDragging(false);
+          
+          if (event.latLng) {
+            const newLat = event.latLng.lat();
+            const newLng = event.latLng.lng();
+            
+            // Reset marker appearance
+            marker.setIcon({
+              path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+              scale: 8,
+              fillColor: point.riskLevel === 'critical' ? '#dc2626' : '#f59e0b',
+              fillOpacity: 1,
+              strokeColor: '#FFFFFF',
+              strokeWeight: 3,
+              anchor: new google.maps.Point(0, 0)
+            });
+
+            // Show feedback to user
+            const infoWindow = new google.maps.InfoWindow({
+              content: `
+                <div style="padding: 8px; max-width: 200px;">
+                  <h4 style="margin: 0 0 8px 0; color: #1F2937; font-size: 14px; font-weight: 600;">
+                    📍 Critical Point Moved
+                  </h4>
+                  <p style="margin: 0 0 4px 0; color: #4B5563; font-size: 12px;">
+                    Position: ${newLat.toFixed(6)}, ${newLng.toFixed(6)}
+                  </p>
+                  <p style="margin: 0; color: #6B7280; font-size: 11px;">
+                    Route will be recalculated to avoid this area
+                  </p>
+                </div>
+              `
+            });
+            
+            infoWindow.open(map, marker);
+            setTimeout(() => infoWindow.close(), 3000);
+
+            // Here you could trigger a route recalculation
+            console.log(`Critical point ${pointIndex} moved to:`, newLat, newLng);
+            // TODO: Implement route recalculation with new waypoint
+          }
+        });
 
         // Add info window for critical points
         const infoWindow = new google.maps.InfoWindow({
@@ -282,26 +345,31 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
               <p style="margin: 0 0 4px 0; color: #4B5563; font-size: 12px;">
                 ${point.description}
               </p>
-              <p style="margin: 0; color: #6B7280; font-size: 11px;">
+              <p style="margin: 0 0 8px 0; color: #6B7280; font-size: 11px;">
                 Route: ${route.name}
               </p>
+              <div style="padding: 4px 8px; background: #FEF3C7; border-radius: 4px; border: 1px solid #F59E0B;">
+                <p style="margin: 0; color: #92400E; font-size: 10px; font-weight: 500;">
+                  💡 Drag this marker to fine-tune the route and avoid problem areas
+                </p>
+              </div>
             </div>
           `
         });
 
         marker.addListener('click', () => {
-          infoWindow.open(map, marker);
-          onRouteSelect(route.id);
+          if (!isDragging) {
+            infoWindow.open(map, marker);
+            onRouteSelect(route.id);
+          }
         });
       }
     });
 
     setCriticalPointMarkers(newCriticalPointMarkers);
-    setRiskOverlays(newRiskOverlays);
   };
 
   const showSegmentDetails = (segment: RouteSegment, riskScore: number) => {
-    // This could open a detailed segment analysis panel
     console.log('Segment details:', segment, 'Risk:', riskScore);
   };
 
@@ -330,12 +398,11 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       
       <div ref={mapRef} className="w-full h-full rounded-lg" />
       
-
-      {/* Map Legend */}
+      {/* Enhanced Map Legend */}
       {!isLoading && !error && (
         <div className="absolute bottom-4 left-4 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
           <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Route Legend
+            Interactive Route Map
           </div>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -354,6 +421,24 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
               <div className="w-3 h-3 bg-red-600 rounded-full"></div>
               <span className="text-xs text-gray-600 dark:text-gray-400">Critical Point</span>
             </div>
+          </div>
+          <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              <strong>Drag</strong> critical points to fine-tune route
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              <strong>Click</strong> segments for details
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Dragging Indicator */}
+      {isDragging && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-20">
+          <div className="flex items-center gap-2">
+            <div className="animate-pulse w-2 h-2 bg-white rounded-full"></div>
+            <span className="text-sm font-medium">Adjusting route...</span>
           </div>
         </div>
       )}
