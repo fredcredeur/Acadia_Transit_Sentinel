@@ -499,7 +499,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       }, 100);
       
     } catch (error) {
-      console.error(`Failed to reverse geocode ${type} position:`, error);
+      console.warn(`Reverse geocoding failed for ${type} position, using coordinates instead:`, error);
       
       // Fall back to coordinates if geocoding fails
       if (type === 'origin') {
@@ -507,6 +507,13 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       } else {
         onMapUpdate(origin, coordString, stops);
       }
+      
+      // Still redraw route path
+      setTimeout(async () => {
+        if (originMarker && destinationMarker) {
+          await drawRoutePath();
+        }
+      }, 100);
     }
   };
 
@@ -541,7 +548,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       }, 100);
       
     } catch (error) {
-      console.error(`Failed to reverse geocode stop position:`, error);
+      console.warn(`Reverse geocoding failed for stop position, using coordinates instead:`, error);
       
       // Fall back to coordinates if geocoding fails
       const newStops = [...stops];
@@ -551,6 +558,13 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       };
       
       onMapUpdate(origin, destination, newStops);
+      
+      // Still redraw route path
+      setTimeout(async () => {
+        if (originMarker && destinationMarker) {
+          await drawRoutePath();
+        }
+      }, 100);
     }
   };
 
@@ -580,7 +594,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       onMapUpdate(origin, destination, newStops);
       
     } catch (error) {
-      console.error('Failed to add stop at location:', error);
+      console.warn('Reverse geocoding failed when adding stop, using coordinates instead:', error);
       
       // Fall back to coordinates if geocoding fails
       const newStop: StopLocation = {

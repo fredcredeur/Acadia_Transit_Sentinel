@@ -409,6 +409,9 @@ export class GoogleMapsService {
             case google.maps.GeocoderStatus.REQUEST_DENIED:
               errorMessage = 'Geocoding request denied. Please check API configuration and ensure the Geocoding API is enabled.';
               break;
+            case google.maps.GeocoderStatus.UNKNOWN_ERROR:
+              errorMessage = 'Geocoding service temporarily unavailable. Please ensure the Geocoding API is enabled in your Google Cloud Console and try again.';
+              break;
             default:
               errorMessage = `Geocoding failed with status: ${status}`;
           }
@@ -436,7 +439,24 @@ export class GoogleMapsService {
         if (status === google.maps.GeocoderStatus.OK && results) {
           resolve(results);
         } else {
-          reject(new Error(`Reverse geocoding failed with status: ${status}`));
+          let errorMessage = 'Reverse geocoding failed';
+          switch (status) {
+            case google.maps.GeocoderStatus.ZERO_RESULTS:
+              errorMessage = 'No address found for the specified coordinates.';
+              break;
+            case google.maps.GeocoderStatus.OVER_QUERY_LIMIT:
+              errorMessage = 'Too many geocoding requests. Please wait and try again.';
+              break;
+            case google.maps.GeocoderStatus.REQUEST_DENIED:
+              errorMessage = 'Reverse geocoding request denied. Please check API configuration and ensure the Geocoding API is enabled.';
+              break;
+            case google.maps.GeocoderStatus.UNKNOWN_ERROR:
+              errorMessage = 'Geocoding service temporarily unavailable. Please ensure the Geocoding API is enabled in your Google Cloud Console and try again.';
+              break;
+            default:
+              errorMessage = `Reverse geocoding failed with status: ${status}`;
+          }
+          reject(new Error(errorMessage));
         }
       });
     });
