@@ -7,7 +7,7 @@ declare global {
   };
 }
 
-// Clean SmartAddressInput.tsx - Removed debug logging
+// Fixed SmartAddressInput.tsx - Resolved address reset issue
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MapPin, CheckCircle, AlertTriangle, Star, Crosshair, Search, Loader2, Clock, Navigation, AlertCircle } from 'lucide-react';
@@ -64,8 +64,9 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   const [placesReady, setPlacesReady] = useState(false);
   const [placesError, setPlacesError] = useState<string>('');
   
-  const [internalValue, setInternalValue] = useState(value);
-  const [isSelectingFromSuggestion, setIsSelectingFromSuggestion] = useState(false);
+  // 🔧 FIX: Use a ref to track if we're programmatically setting the value
+  const isProgrammaticUpdate = useRef(false);
+  const lastPropValue = useRef(value);
   
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimeoutRef = useRef<number>();
@@ -76,20 +77,20 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   const { savedLocations, markAsUsed } = useSavedLocations();
   const { coordinates, getCurrentLocation, isLoading: isGettingLocation } = useGeolocation();
 
+  // 🔧 FIX: Only update internal state when prop value changes from external source
   useEffect(() => {
-    if (!isSelectingFromSuggestion && value !== internalValue) {
-      setInternalValue(value);
+    if (value !== lastPropValue.current && !isProgrammaticUpdate.current) {
+      lastPropValue.current = value;
+      // Only update if the input is not focused (user is not typing)
+      if (document.activeElement !== inputRef.current) {
+        // This is an external update, sync the input
+        if (inputRef.current) {
+          inputRef.current.value = value;
+        }
+      }
     }
-  }, [value, isSelectingFromSuggestion, internalValue]);
-
-  useEffect(() => {
-    if (isSelectingFromSuggestion) {
-      const resetTimer = setTimeout(() => {
-        setIsSelectingFromSuggestion(false);
-      }, 100);
-      return () => clearTimeout(resetTimer);
-    }
-  }, [isSelectingFromSuggestion]);
+    isProgrammaticUpdate.current = false;
+  }, [value]);
 
   useEffect(() => {
     const initializePlaces = async () => {
@@ -138,9 +139,12 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   useEffect(() => {
     if (coordinates) {
       const coordString = `${coordinates.lat},${coordinates.lng}`;
-      setIsSelectingFromSuggestion(true);
-      setInternalValue(coordString);
+      isProgrammaticUpdate.current = true;
+      lastPropValue.current = coordString;
       onChange(coordString);
+      if (inputRef.current) {
+        inputRef.current.value = coordString;
+      }
     }
   }, [coordinates, onChange]);
 
@@ -260,7 +264,8 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     const debounceDelay = placesReady ? 200 : 500;
 
     debounceTimeoutRef.current = setTimeout(() => {
-      generateSuggestions(internalValue);
+      const currentValue = inputRef.current?.value || '';
+      generateSuggestions(currentValue);
     }, debounceDelay);
 
     return () => {
@@ -268,11 +273,12 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [internalValue, showSuggestions, generateSuggestions, placesReady]);
+  }, [showSuggestions, generateSuggestions, placesReady]);
 
   useEffect(() => {
-    validateAddress(internalValue);
-  }, [internalValue]);
+    const currentValue = inputRef.current?.value || '';
+    validateAddress(currentValue);
+  }, []);
 
   const validateAddress = (address: string) => {
     if (address.length < 2) {
@@ -323,8 +329,13 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       }
     }
 
-    setIsSelectingFromSuggestion(true);
-    setInternalValue(finalAddress);
+    // 🔧 FIX: Mark as programmatic update and update both input and parent
+    isProgrammaticUpdate.current = true;
+    lastPropValue.current = finalAddress;
+    
+    if (inputRef.current) {
+      inputRef.current.value = finalAddress;
+    }
     onChange(finalAddress);
     setShowSuggestions(false);
     currentSearchRef.current = '';
@@ -341,8 +352,9 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   const handleFocus = () => {
     setShowSuggestions(true);
     
-    if (internalValue.length >= 1) {
-      generateSuggestions(internalValue);
+    const currentValue = inputRef.current?.value || '';
+    if (currentValue.length >= 1) {
+      generateSuggestions(currentValue);
     }
   };
 
@@ -350,15 +362,21 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     setTimeout(() => setShowSuggestions(false), 300);
   };
 
-  const handleInputChange = (newValue: string) => {
-    if (!isSelectingFromSuggestion) {
-      setInternalValue(newValue);
-      onChange(newValue);
-      currentSearchRef.current = '';
-      
-      if (newValue.length >= 1 && !showSuggestions) {
-        setShowSuggestions(true);
-      }
+  // 🔧 FIX: Handle input changes properly without interfering with prop updates
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    
+    // Update parent component
+    isProgrammaticUpdate.current = true;
+    lastPropValue.current = newValue;
+    onChange(newValue);
+    
+    // Clear search cache and validate
+    currentSearchRef.current = '';
+    validateAddress(newValue);
+    
+    if (newValue.length >= 1 && !showSuggestions) {
+      setShowSuggestions(true);
     }
   };
 
@@ -430,8 +448,8 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         <input
           ref={inputRef}
           type="text"
-          value={internalValue}
-          onChange={(e) => handleInputChange(e.target.value)}
+          defaultValue={value}
+          onChange={handleInputChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
           disabled={disabled}
@@ -535,11 +553,11 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
               </div>
             )}
             
-            {!isLoadingSuggestions && suggestions.length === 0 && internalValue.length >= 2 && (
+            {!isLoadingSuggestions && suggestions.length === 0 && (inputRef.current?.value.length || 0) >= 2 && (
               <div className="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">
                 {placesReady ? (
                   <div>
-                    <div>No suggestions found for "{internalValue}"</div>
+                    <div>No suggestions found for "{inputRef.current?.value}"</div>
                     <div className="text-xs mt-1">Try being more specific or check spelling</div>
                   </div>
                 ) : (
@@ -554,7 +572,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         </div>
       )}
 
-      {!showSuggestions && internalValue.length === 0 && (
+      {!showSuggestions && (inputRef.current?.value.length || 0) === 0 && (
         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
           {placesReady ? (
             <span>💡 Powered by Google Maps - start typing for live suggestions</span>
