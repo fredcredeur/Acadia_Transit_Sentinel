@@ -381,20 +381,33 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
   };
 
   const drawRoutePath = async () => {
-    if (!map || !origin || !destination) return;
+    if (!map || !originMarker || !destinationMarker) return;
     
     try {
       const directionsService = new google.maps.DirectionsService();
       
-      // Prepare waypoints from stops
-      const waypoints = stops.map(stop => ({
-        location: stop.address,
-        stopover: true
-      }));
+      // Use the actual marker positions instead of raw addresses
+      const originPosition = originMarker.getPosition();
+      const destinationPosition = destinationMarker.getPosition();
+      
+      if (!originPosition || !destinationPosition) {
+        console.warn('Origin or destination marker position not available');
+        return;
+      }
+      
+      // Prepare waypoints from stop markers (use their positions, not addresses)
+      const waypoints = stopMarkers.map(marker => {
+        const position = marker.getPosition();
+        if (!position) return null;
+        return {
+          location: position,
+          stopover: true
+        };
+      }).filter(waypoint => waypoint !== null);
       
       const result = await directionsService.route({
-        origin,
-        destination,
+        origin: originPosition,
+        destination: destinationPosition,
         waypoints,
         travelMode: google.maps.TravelMode.DRIVING,
         optimizeWaypoints: false
@@ -478,10 +491,12 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
         onMapUpdate(origin, formattedAddress, newStops);
       }
       
-      // Redraw route path
-      if (origin && destination) {
-        await drawRoutePath();
-      }
+      // Redraw route path after a short delay to ensure markers are updated
+      setTimeout(async () => {
+        if (originMarker && destinationMarker) {
+          await drawRoutePath();
+        }
+      }, 100);
       
     } catch (error) {
       console.error(`Failed to reverse geocode ${type} position:`, error);
@@ -518,10 +533,12 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       
       onMapUpdate(origin, destination, newStops);
       
-      // Redraw route path
-      if (origin && destination) {
-        await drawRoutePath();
-      }
+      // Redraw route path after a short delay to ensure markers are updated
+      setTimeout(async () => {
+        if (originMarker && destinationMarker) {
+          await drawRoutePath();
+        }
+      }, 100);
       
     } catch (error) {
       console.error(`Failed to reverse geocode stop position:`, error);
