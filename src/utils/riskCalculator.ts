@@ -8,6 +8,8 @@ export interface RoadContext {
   schoolZone: boolean;
   commercialLoading: boolean;
   designatedTruckRoute: boolean;
+  // A new property to identify the type of turn
+  turnDirection?: 'left' | 'right' | 'straight';
 }
 
 export interface TurnAnalysis {
@@ -35,12 +37,12 @@ export interface EnhancedRiskBreakdown {
 export class RiskCalculator {
   // Revised weights that consider road context
   private static readonly WEIGHTS = {
-    pedestrianTraffic: 0.20,    // Reduced - context matters more
-    maneuvering: 0.15,          // Vehicle-specific maneuvering
-    infrastructure: 0.20,       // Height/width restrictions
-    traffic: 0.15,              // Congestion and speed
-    roadContext: 0.20,          // NEW: Road type appropriateness
-    intersection: 0.10          // NEW: Intersection type risk
+    pedestrianTraffic: 0.15, 
+    maneuvering: 0.20, // Increased maneuvering weight       
+    infrastructure: 0.20,       
+    traffic: 0.15,             
+    roadContext: 0.15,
+    intersection: 0.15 // Increased intersection weight
   };
 
   static calculateSegmentRisk(segment: RouteSegment, vehicle: Vehicle, nextSegmentContext: RoadContext | null = null): number {
@@ -102,6 +104,7 @@ export class RiskCalculator {
   private static analyzeRoadContext(segment: RouteSegment): RoadContext {
     const streetName = segment.streetName.toLowerCase();
     const factors = segment.riskFactors;
+    const description = segment.description.toLowerCase();
     
     // Analyze road type from street name and characteristics
     let type: RoadContext['type'] = 'arterial'; // default
@@ -150,12 +153,22 @@ export class RiskCalculator {
     const hasStopSigns = factors.speedLimit <= 25 && !hasTrafficSignals;
     
     // School zone detection
-    const schoolZone = segment.description.toLowerCase().includes('school') || 
+    const schoolZone = description.includes('school') || 
                       factors.speedLimit <= 20 ||
                       (factors.pedestrianTraffic > 80 && factors.speedLimit <= 25);
     
     // Commercial loading zone detection
     const commercialLoading = type === 'commercial' && factors.trafficCongestion > 50;
+
+    // Detect turn direction
+    let turnDirection: RoadContext['turnDirection'];
+    if (description.includes('left')) {
+        turnDirection = 'left';
+    } else if (description.includes('right')) {
+        turnDirection = 'right';
+    } else {
+        turnDirection = 'straight';
+    }
 
     return {
       type,
@@ -164,7 +177,8 @@ export class RiskCalculator {
       hasStopSigns,
       schoolZone,
       commercialLoading,
-      designatedTruckRoute
+      designatedTruckRoute,
+      turnDirection
     };
   }
 
@@ -358,6 +372,11 @@ export class RiskCalculator {
            risk += 35; // Add a very large penalty for crossing a busy road from a stop.
         }
       }
+      // NEW: Penalty for unprotected left turns
+      if (context.turnDirection === 'left') {
+        risk += 20;
+      }
+
     } else {
       risk = 50; // Uncontrolled
     }
