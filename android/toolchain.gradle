@@ -1,0 +1,11 @@
+// Force Java 17 for all projects
+allprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            project.android.compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+        }
+    }
+}
