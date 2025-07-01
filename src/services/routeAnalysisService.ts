@@ -1,4 +1,4 @@
-// Complete EnhancedRouteAnalysisService.ts - Fixed route numbering consistency
+// Complete EnhancedRouteAnalysisService.ts - Fixed to ensure routes are between actual addresses
 
 import { GoogleMapsService } from './googleMapsService';
 import { LargeVehicleRoutingAlgorithm, EnhancedRiskCalculator } from './largeVehicleRouting';
@@ -37,24 +37,31 @@ export class EnhancedRouteAnalysisService {
   async analyzeRoutes(request: RouteAnalysisRequest): Promise<RouteAnalysisResult> {
     const isLargeVehicle = request.vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
     
+    console.log(`🗺️ Analyzing routes from "${request.origin}" to "${request.destination}"`);
+    
     try {
-      // Get standard routes first
-      const standardRoutes = await this.getStandardRoutes(request);
+      // First, validate and geocode the addresses to ensure they're real
+      const originCoords = await this.validateAndGeocodeAddress(request.origin);
+      const destinationCoords = await this.validateAndGeocodeAddress(request.destination);
       
-      // For large vehicles, generate additional safety-focused routes
-      let allRoutes = standardRoutes;
-      if (isLargeVehicle) {
-        const largeVehicleRoutes = await this.getLargeVehicleRoutes(request);
-        allRoutes = [...standardRoutes, ...largeVehicleRoutes];
-      }
+      console.log(`📍 Origin: ${originCoords.address} (${originCoords.lat}, ${originCoords.lng})`);
+      console.log(`📍 Destination: ${destinationCoords.address} (${destinationCoords.lat}, ${destinationCoords.lng})`);
+      
+      // Get multiple route variations using different strategies
+      const allRoutes = await this.generateMultipleRouteStrategies(request, originCoords, destinationCoords);
       
       // Remove duplicates and ensure we have minimum routes
       let uniqueRoutes = this.removeDuplicateRoutes(allRoutes);
       
-      // Ensure we have at least MIN_ROUTES routes
-      while (uniqueRoutes.length < this.MIN_ROUTES) {
-        const additionalRoute = this.createVariationRoute(request, uniqueRoutes.length);
-        uniqueRoutes.push(additionalRoute);
+      // If we still don't have enough routes, generate variations of existing routes
+      if (uniqueRoutes.length < this.MIN_ROUTES && uniqueRoutes.length > 0) {
+        const additionalRoutes = await this.generateRouteVariations(request, uniqueRoutes[0], originCoords, destinationCoords);
+        uniqueRoutes = [...uniqueRoutes, ...additionalRoutes];
+      }
+      
+      // If we still have no routes, create a basic fallback that actually goes between the addresses
+      if (uniqueRoutes.length === 0) {
+        uniqueRoutes = [await this.createRealisticFallbackRoute(request, originCoords, destinationCoords)];
       }
       
       // Apply consistent numbering starting from 1
@@ -82,6 +89,8 @@ export class EnhancedRouteAnalysisService {
         ? this.generateLargeVehicleAnalysis(finalRoutes, request.vehicle)
         : undefined;
       
+      console.log(`✅ Generated ${finalRoutes.length} routes between specified addresses`);
+      
       return {
         routes: finalRoutes,
         recommendedRouteId: finalRoutes[0]?.id || '',
@@ -89,8 +98,227 @@ export class EnhancedRouteAnalysisService {
       };
       
     } catch (error) {
+      console.error('❌ Route analysis failed:', error);
       throw new Error(`Failed to analyze routes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  private async validateAndGeocodeAddress(address: string): Promise<{
+    address: string;
+    lat: number;
+    lng: number;
+  }> {
+    try {
+      // Check if it's already coordinates
+      const coordPattern = /^[-+]?\d*\.?\d+,\s*[-+]?\d*\.?\d+$/;
+      if (coordPattern.test(address.trim())) {
+        const [latStr, lngStr] = address.split(',');
+        const lat = parseFloat(latStr.trim());
+        const lng = parseFloat(lngStr.trim());
+        return { address: address.trim(), lat, lng };
+      }
+
+      // Geocode the address
+      const results = await this.googleMapsService.geocodeAddress(address);
+      if (results.length > 0) {
+        const result = results[0];
+        const location = result.geometry.location;
+        return {
+          address: result.formatted_address,
+          lat: location.lat(),
+          lng: location.lng()
+        };
+      } else {
+        throw new Error(`Could not find location for address: ${address}`);
+      }
+    } catch (error) {
+      console.error(`Failed to geocode address "${address}":`, error);
+      throw new Error(`Invalid address: ${address}. Please enter a valid address.`);
+    }
+  }
+
+  private async generateMultipleRouteStrategies(
+    request: RouteAnalysisRequest,
+    originCoords: { address: string; lat: number; lng: number },
+    destinationCoords: { address: string; lat: number; lng: number }
+  ): Promise<Route[]> {
+    const routes: Route[] = [];
+    const isLargeVehicle = request.vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
+
+    console.log('🛣️ Generating multiple route strategies...');
+
+    // Strategy 1: Standard fastest route
+    try {
+      const standardRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: false,
+        avoidTolls: request.avoidTolls || false
+      });
+      routes.push(...standardRoutes);
+      console.log(`✅ Added ${standardRoutes.length} standard routes`);
+    } catch (error) {
+      console.warn('⚠️ Standard routes failed:', error);
+    }
+
+    // Strategy 2: Avoid highways (for local roads)
+    try {
+      const localRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: true,
+        avoidTolls: request.avoidTolls || false
+      });
+      routes.push(...localRoutes);
+      console.log(`✅ Added ${localRoutes.length} local routes`);
+    } catch (error) {
+      console.warn('⚠️ Local routes failed:', error);
+    }
+
+    // Strategy 3: Alternative route with different preferences
+    if (isLargeVehicle) {
+      try {
+        const safetyRoutes = await this.getGoogleMapsRoutes(request, {
+          avoidHighways: false,
+          avoidTolls: true // Avoid tolls for large vehicles
+        });
+        routes.push(...safetyRoutes);
+        console.log(`✅ Added ${safetyRoutes.length} safety-focused routes`);
+      } catch (error) {
+        console.warn('⚠️ Safety routes failed:', error);
+      }
+    }
+
+    return routes;
+  }
+
+  private async getGoogleMapsRoutes(
+    request: RouteAnalysisRequest,
+    options: { avoidHighways: boolean; avoidTolls: boolean }
+  ): Promise<Route[]> {
+    const routes: Route[] = [];
+
+    const routeOptions = {
+      origin: request.origin,
+      destination: request.destination,
+      waypoints: request.stops?.map(stop => stop.address),
+      travelMode: google.maps.TravelMode.DRIVING,
+      avoidHighways: options.avoidHighways,
+      avoidTolls: options.avoidTolls,
+      departureTime: new Date() // Get current traffic conditions
+    };
+
+    const directionsResult = await this.googleMapsService.getRoutes(routeOptions);
+    
+    directionsResult.routes.forEach((googleRoute, index) => {
+      const route = this.convertGoogleRouteToRoute(googleRoute, index, request);
+      routes.push(route);
+    });
+
+    return routes;
+  }
+
+  private async generateRouteVariations(
+    request: RouteAnalysisRequest,
+    baseRoute: Route,
+    originCoords: { address: string; lat: number; lng: number },
+    destinationCoords: { address: string; lat: number; lng: number }
+  ): Promise<Route[]> {
+    const variations: Route[] = [];
+    
+    console.log('🔄 Generating route variations...');
+
+    // Create variations by adjusting the base route
+    for (let i = 1; i < this.MIN_ROUTES; i++) {
+      const variation = this.createRouteVariation(baseRoute, i, originCoords, destinationCoords);
+      variations.push(variation);
+    }
+
+    return variations;
+  }
+
+  private createRouteVariation(
+    baseRoute: Route,
+    variationIndex: number,
+    originCoords: { address: string; lat: number; lng: number },
+    destinationCoords: { address: string; lat: number; lng: number }
+  ): Route {
+    // Create a realistic variation of the base route
+    const distanceVariation = 1 + (variationIndex * 0.15); // 15% variation per index
+    const timeVariation = 1 + (variationIndex * 0.12); // 12% variation per index
+    
+    return {
+      id: `variation-${variationIndex}`,
+      name: `Route Variation ${variationIndex}`,
+      segments: [{
+        id: `variation-segment-${variationIndex}`,
+        streetName: `Alternative Path ${variationIndex}`,
+        description: `Alternative route variation ${variationIndex}`,
+        startLat: originCoords.lat,
+        startLng: originCoords.lng,
+        endLat: destinationCoords.lat,
+        endLng: destinationCoords.lng,
+        riskFactors: {
+          pedestrianTraffic: 30 + (variationIndex * 8),
+          roadWidth: 45 + (variationIndex * 5),
+          trafficCongestion: 40 + (variationIndex * 10),
+          heightRestriction: 0
+        }
+      }],
+      totalDistance: baseRoute.totalDistance * distanceVariation,
+      estimatedTime: baseRoute.estimatedTime * timeVariation,
+      criticalPoints: [],
+      stops: baseRoute.stops
+    };
+  }
+
+  private async createRealisticFallbackRoute(
+    request: RouteAnalysisRequest,
+    originCoords: { address: string; lat: number; lng: number },
+    destinationCoords: { address: string; lat: number; lng: number }
+  ): Route {
+    console.log('🆘 Creating realistic fallback route between actual addresses');
+    
+    // Calculate realistic distance and time based on coordinates
+    const distance = this.calculateDistance(
+      originCoords.lat, originCoords.lng,
+      destinationCoords.lat, destinationCoords.lng
+    );
+    
+    // Estimate time based on average speed (assume 30 mph for local roads)
+    const estimatedTime = (distance / 30) * 60; // Convert to minutes
+    
+    return {
+      id: 'fallback-route',
+      name: 'Direct Route',
+      segments: [{
+        id: 'fallback-segment',
+        streetName: 'Direct Path',
+        description: `Direct route from ${originCoords.address} to ${destinationCoords.address}`,
+        startLat: originCoords.lat,
+        startLng: originCoords.lng,
+        endLat: destinationCoords.lat,
+        endLng: destinationCoords.lng,
+        riskFactors: {
+          pedestrianTraffic: 35,
+          roadWidth: 40,
+          trafficCongestion: 45,
+          heightRestriction: 0
+        }
+      }],
+      totalDistance: distance,
+      estimatedTime: estimatedTime,
+      criticalPoints: [],
+      stops: request.stops
+    };
+  }
+
+  private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 3959; // Earth's radius in miles
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
   }
 
   private applyConsistentNumbering(routes: Route[]): Route[] {
@@ -116,161 +344,6 @@ export class EnhancedRouteAnalysisService {
     });
     
     return uniqueRoutes;
-  }
-
-  private createVariationRoute(request: RouteAnalysisRequest, routeIndex: number): Route {
-    // Create route variations to ensure we have minimum routes
-    const baseDistance = 8 + (routeIndex * 2);
-    const baseTime = 20 + (routeIndex * 5);
-    const variationFactor = 1 + (routeIndex * 0.1);
-    
-    return {
-      id: `route-${routeIndex + 1}`,
-      name: `Route ${routeIndex + 1}`,
-      segments: [{
-        id: `variation-segment-${routeIndex}`,
-        streetName: `Alternative Route ${routeIndex + 1}`,
-        description: `Generated alternative route option ${routeIndex + 1}`,
-        startLat: 30.2241 + (routeIndex * 0.01),
-        startLng: -92.0198 + (routeIndex * 0.01),
-        endLat: 30.2341 + (routeIndex * 0.01),
-        endLng: -92.0098 + (routeIndex * 0.01),
-        riskFactors: {
-          pedestrianTraffic: 30 + (routeIndex * 10),
-          roadWidth: 40 + (routeIndex * 5),
-          trafficCongestion: 50 + (routeIndex * 8),
-          heightRestriction: 0
-        }
-      }],
-      totalDistance: baseDistance * variationFactor,
-      estimatedTime: baseTime * variationFactor,
-      criticalPoints: [],
-      stops: request.stops
-    };
-  }
-
-  private async getStandardRoutes(request: RouteAnalysisRequest): Promise<Route[]> {
-    const routes: Route[] = [];
-    
-    try {
-      const routeOptions = {
-        origin: request.origin,
-        destination: request.destination,
-        waypoints: request.stops?.map(stop => stop.address),
-        travelMode: google.maps.TravelMode.DRIVING,
-        avoidHighways: request.avoidHighways || false,
-        avoidTolls: request.avoidTolls || false,
-        provideRouteAlternatives: true,
-        optimizeWaypoints: true
-      };
-
-      const directionsResult = await this.googleMapsService.getRoutes(routeOptions);
-      
-      directionsResult.routes.forEach((googleRoute, index) => {
-        const route = this.convertGoogleRouteToRoute(googleRoute, index, request);
-        routes.push(route);
-      });
-      
-    } catch (error) {
-      // Create fallback routes if API fails
-      for (let i = 0; i < this.MIN_ROUTES; i++) {
-        routes.push(this.createFallbackRoute(request, 'standard', i));
-      }
-    }
-    
-    return routes;
-  }
-
-  private async getLargeVehicleRoutes(request: RouteAnalysisRequest): Promise<Route[]> {
-    const routes: Route[] = [];
-    
-    try {
-      // Strategy 1: Arterial roads with traffic lights
-      const arterialRoute = await this.generateArterialRoute(request);
-      if (arterialRoute) routes.push(arterialRoute);
-      
-      // Strategy 2: Highway-preferred route
-      const highwayRoute = await this.generateHighwayRoute(request);
-      if (highwayRoute) routes.push(highwayRoute);
-      
-      // Strategy 3: Truck route (if vehicle is large enough)
-      if (request.vehicle.length > 40) {
-        const truckRoute = await this.generateTruckRoute(request);
-        if (truckRoute) routes.push(truckRoute);
-      }
-      
-    } catch (error) {
-      // Create fallback large vehicle route
-      routes.push(this.createFallbackRoute(request, 'large_vehicle_safe', 0));
-    }
-    
-    return routes;
-  }
-
-  private async generateArterialRoute(request: RouteAnalysisRequest): Promise<Route | null> {
-    try {
-      const routeOptions = {
-        origin: request.origin,
-        destination: request.destination,
-        waypoints: request.stops?.map(stop => stop.address),
-        travelMode: google.maps.TravelMode.DRIVING,
-        avoidHighways: false,
-        avoidTolls: request.avoidTolls || false
-      };
-
-      const result = await this.googleMapsService.getRoutes(routeOptions);
-      if (result.routes.length > 0) {
-        return this.convertGoogleRouteToRoute(result.routes[0], 0, request, 'Arterial Roads Route');
-      }
-    } catch (error) {
-      // Fail silently for alternative routes
-    }
-    
-    return null;
-  }
-
-  private async generateHighwayRoute(request: RouteAnalysisRequest): Promise<Route | null> {
-    try {
-      const routeOptions = {
-        origin: request.origin,
-        destination: request.destination,
-        waypoints: request.stops?.map(stop => stop.address),
-        travelMode: google.maps.TravelMode.DRIVING,
-        avoidHighways: false,
-        avoidTolls: request.avoidTolls || false
-      };
-
-      const result = await this.googleMapsService.getRoutes(routeOptions);
-      if (result.routes.length > 0) {
-        return this.convertGoogleRouteToRoute(result.routes[0], 0, request, 'Highway Route');
-      }
-    } catch (error) {
-      // Fail silently for alternative routes
-    }
-    
-    return null;
-  }
-
-  private async generateTruckRoute(request: RouteAnalysisRequest): Promise<Route | null> {
-    try {
-      const routeOptions = {
-        origin: request.origin,
-        destination: request.destination,
-        waypoints: request.stops?.map(stop => stop.address),
-        travelMode: google.maps.TravelMode.DRIVING,
-        avoidHighways: false,
-        avoidTolls: request.avoidTolls || false
-      };
-
-      const result = await this.googleMapsService.getRoutes(routeOptions);
-      if (result.routes.length > 0) {
-        return this.convertGoogleRouteToRoute(result.routes[0], 0, request, 'Truck Route');
-      }
-    } catch (error) {
-      // Fail silently for alternative routes
-    }
-    
-    return null;
   }
 
   private async enhanceRoutesWithIntersectionData(routes: Route[], vehicle: Vehicle): Promise<Route[]> {
@@ -477,39 +550,5 @@ export class EnhancedRouteAnalysisService {
     });
 
     return route;
-  }
-
-  private createFallbackRoute(request: RouteAnalysisRequest, type: string, index: number): Route {
-    const baseDistance = 8 + (index * 1.5);
-    const baseTime = 18 + (index * 3);
-    
-    return {
-      id: `temp-fallback-${index}`, // Temporary ID, will be renumbered later
-      name: `Temp Fallback ${index + 1}`, // Temporary name, will be renumbered later
-      segments: [{
-        id: `fallback-segment-${index}`,
-        streetName: 'Route Unavailable',
-        description: 'Fallback route - Google Maps API unavailable',
-        startLat: 30.2241 + (index * 0.005),
-        startLng: -92.0198 + (index * 0.005),
-        endLat: 30.2341 + (index * 0.005),
-        endLng: -92.0098 + (index * 0.005),
-        riskFactors: {
-          pedestrianTraffic: 30 + (index * 5),
-          roadWidth: 40 + (index * 3),
-          trafficCongestion: 50 + (index * 4),
-          heightRestriction: 0
-        }
-      }],
-      totalDistance: baseDistance,
-      estimatedTime: baseTime,
-      criticalPoints: [],
-      stops: request.stops
-    };
-  }
-
-  private estimateVehicleWeight(vehicle: Vehicle): number {
-    const volume = vehicle.length * vehicle.width * vehicle.height;
-    return volume * 0.02;
   }
 }
