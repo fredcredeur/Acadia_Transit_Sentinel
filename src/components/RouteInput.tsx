@@ -22,6 +22,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   stops,
   onStopsChange,
 }) => {
+  // 🔧 FIX: Keep local state persistent and sync with props properly
   const [origin, setOrigin] = useState(initialOrigin);
   const [destination, setDestination] = useState(initialDestination);
   const [isLoop, setIsLoop] = useState(false);
@@ -30,18 +31,18 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   const [apiError, setApiError] = useState<string>('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Update local state when initial values change
+  // 🔧 FIX: Only update local state when props change AND we're not currently loading
+  // This prevents the addresses from being cleared during route analysis
   useEffect(() => {
-    if (initialOrigin && initialOrigin !== origin) {
-      setOrigin(initialOrigin);
+    if (!isLoading) {
+      if (initialOrigin && initialOrigin !== origin) {
+        setOrigin(initialOrigin);
+      }
+      if (initialDestination && initialDestination !== destination) {
+        setDestination(initialDestination);
+      }
     }
-  }, [initialOrigin]);
-
-  useEffect(() => {
-    if (initialDestination && initialDestination !== destination) {
-      setDestination(initialDestination);
-    }
-  }, [initialDestination]);
+  }, [initialOrigin, initialDestination, isLoading]);
 
   // Check API status on mount
   useEffect(() => {
@@ -134,7 +135,20 @@ export const RouteInput: React.FC<RouteInputProps> = ({
 
     // Proceed with route analysis
     if (origin.trim() && destination.trim() && !isLoading) {
-      const finalStops = stops.filter(stop => stop.address.trim());
+      let finalStops = stops.filter(stop => stop.address.trim());
+      
+      // 🔧 FIX: If loop is enabled, add the origin as the final stop
+      if (isLoop && origin.trim()) {
+        const loopStop: StopLocation = {
+          id: 'loop-return',
+          address: origin.trim(),
+          order: finalStops.length,
+          estimatedStopTime: 5, // Short stop time for loop return
+          name: 'Return to Start'
+        };
+        finalStops = [...finalStops, loopStop];
+      }
+      
       onRouteRequest(origin.trim(), destination.trim(), finalStops.length > 0 ? finalStops : undefined, isLoop);
     }
   };
@@ -161,7 +175,14 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   };
 
   const getTotalStopTime = () => {
-    return stops.reduce((total, stop) => total + (stop.estimatedStopTime || 0), 0);
+    let totalTime = stops.reduce((total, stop) => total + (stop.estimatedStopTime || 0), 0);
+    
+    // Add loop return time if loop is enabled
+    if (isLoop) {
+      totalTime += 5; // 5 minutes for loop return
+    }
+    
+    return totalTime;
   };
 
   const getApiStatusColor = () => {
@@ -282,6 +303,20 @@ export const RouteInput: React.FC<RouteInputProps> = ({
                     Loop route (return to starting location)
                   </label>
                 </div>
+                
+                {/* Loop Route Info */}
+                {isLoop && (
+                  <div className="ml-6 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                    <div className="text-sm text-blue-800 dark:text-blue-300">
+                      <div className="font-medium mb-1">🔄 Loop Route Enabled</div>
+                      <div className="text-xs">
+                        • Route will return to starting location
+                        • Adds ~5 minutes for final return
+                        • Useful for delivery routes or round trips
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -310,11 +345,34 @@ export const RouteInput: React.FC<RouteInputProps> = ({
             ) : (
               <>
                 <Navigation className="w-5 h-5" />
-                Analyze Routes {stops.length > 0 && `(${stops.length} stop${stops.length > 1 ? 's' : ''})`}
+                Analyze Routes
+                {(stops.length > 0 || isLoop) && (
+                  <span className="ml-1">
+                    ({stops.length} stop{stops.length !== 1 ? 's' : ''}{isLoop ? ' + loop' : ''})
+                  </span>
+                )}
               </>
             )}
           </button>
         </form>
+
+        {/* Route Summary */}
+        {(stops.length > 0 || isLoop) && (
+          <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+            <div className="text-sm text-gray-700 dark:text-gray-300">
+              <div className="font-medium mb-1">Route Summary:</div>
+              <div className="space-y-1 text-xs">
+                {stops.length > 0 && (
+                  <div>• {stops.length} intermediate stop{stops.length !== 1 ? 's' : ''}</div>
+                )}
+                {isLoop && (
+                  <div>• Loop route: returns to starting location</div>
+                )}
+                <div>• Total estimated stop time: <strong>{getTotalStopTime()} minutes</strong></div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stop Locations Manager */}

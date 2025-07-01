@@ -39,7 +39,7 @@ function App() {
   const [useRealData, setUseRealData] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Store the last analyzed addresses and stops
+  // 🔧 FIX: Store addresses persistently and don't clear them during analysis
   const [lastAnalyzedOrigin, setLastAnalyzedOrigin] = useState('');
   const [lastAnalyzedDestination, setLastAnalyzedDestination] = useState('');
   const [stops, setStops] = useState<StopLocation[]>([]);
@@ -81,9 +81,9 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
     const routeAnalysisService = new EnhancedRouteAnalysisService();
     
     let stopsToUse = stops || [];
-    if (isLoop) {
-      stopsToUse = [...stopsToUse, { id: 'loop-return', address: origin.trim(), order: stopsToUse.length }];
-    }
+    
+    // 🔧 FIX: Handle loop routes properly - the loop logic is now in RouteInput
+    // The stops array already includes the loop return stop if isLoop was true
     
     const isLargeVehicle = vehicle.length >= 30;
     
@@ -91,7 +91,8 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
       origin,
       destination, 
       stops: stopsToUse.map(s => ({ address: s.address, order: s.order })),
-      vehicleLength: vehicle.length
+      vehicleLength: vehicle.length,
+      isLoop
     });
     
     const result = await routeAnalysisService.analyzeRoutes({
@@ -108,6 +109,8 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
     setSelectedRouteId(result.recommendedRouteId);
     setLargeVehicleAnalysis(result.largeVehicleAnalysis);
     
+    // 🔧 FIX: Store the addresses IMMEDIATELY after starting analysis
+    // This prevents them from being cleared during the analysis process
     setLastAnalyzedOrigin(origin);
     setLastAnalyzedDestination(destination);
     setStops(stopsToUse);
@@ -125,7 +128,14 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
     
     let text = `${lastAnalyzedOrigin} → ${lastAnalyzedDestination}`;
     if (stops.length > 0) {
-      text += ` (${stops.length} stop${stops.length > 1 ? 's' : ''})`;
+      // Check if this is a loop route by looking for the loop return stop
+      const isLoopRoute = stops.some(stop => stop.id === 'loop-return');
+      if (isLoopRoute) {
+        const regularStops = stops.filter(stop => stop.id !== 'loop-return');
+        text += ` (${regularStops.length} stop${regularStops.length !== 1 ? 's' : ''} + loop)`;
+      } else {
+        text += ` (${stops.length} stop${stops.length > 1 ? 's' : ''})`;
+      }
     }
     return text;
   };
@@ -279,10 +289,10 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
                     />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-gray-900 dark:text-white truncate">
-                        Route {index + 1}
+                        {route.name}
                       </div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {route.totalDistance}mi • {route.estimatedTime}min
+                        {route.totalDistance.toFixed(1)}mi • {Math.round(route.estimatedTime)}min
                       </div>
                     </div>
                     <div className="text-right">
@@ -300,35 +310,37 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
           </div>
 
           {/* Quick Actions */}
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-            <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Quick Actions:</div>
-            <div className="grid grid-cols-2 gap-2">
-              <button 
-                onClick={() => {
-                  const safestRoute = routes.reduce((best, current) => {
-                    const currentRisk = RiskCalculator.calculateRouteRisk(current, vehicle);
-                    const bestRisk = RiskCalculator.calculateRouteRisk(best, vehicle);
-                    return currentRisk < bestRisk ? current : best;
-                  });
-                  setSelectedRouteId(safestRoute.id);
-                }}
-                className="px-3 py-2 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
-              >
-                🛡️ Safest
-              </button>
-              <button 
-                onClick={() => {
-                  const fastestRoute = routes.reduce((best, current) => 
-                    current.estimatedTime < best.estimatedTime ? current : best
-                  );
-                  setSelectedRouteId(fastestRoute.id);
-                }}
-                className="px-3 py-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
-              >
-                ⚡ Fastest
-              </button>
+          {routes.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+              <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Quick Actions:</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button 
+                  onClick={() => {
+                    const safestRoute = routes.reduce((best, current) => {
+                      const currentRisk = RiskCalculator.calculateRouteRisk(current, vehicle);
+                      const bestRisk = RiskCalculator.calculateRouteRisk(best, vehicle);
+                      return currentRisk < bestRisk ? current : best;
+                    });
+                    setSelectedRouteId(safestRoute.id);
+                  }}
+                  className="px-3 py-2 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                >
+                  🛡️ Safest
+                </button>
+                <button 
+                  onClick={() => {
+                    const fastestRoute = routes.reduce((best, current) => 
+                      current.estimatedTime < best.estimatedTime ? current : best
+                    );
+                    setSelectedRouteId(fastestRoute.id);
+                  }}
+                  className="px-3 py-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                >
+                  ⚡ Fastest
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
