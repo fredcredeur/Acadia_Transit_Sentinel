@@ -1,10 +1,8 @@
-// Updated RouteInput.tsx - with unique IDs for each input
-
 import React, { useState, useEffect } from 'react';
-import { Navigation, Loader2, AlertCircle, CheckCircle, MapPin } from 'lucide-react';
-import { SmartAddressInput } from './SmartAddressInput';
+import { Navigation, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { LocationInput } from './LocationInput';
 import { StopLocationsManager } from './StopLocationsManager';
-import { SavedLocation, StopLocation } from '../types';
+import { StopLocation } from '../types';
 import { GoogleMapsService } from '../services/googleMapsService';
 
 interface RouteInputProps {
@@ -32,29 +30,16 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   const [apiError, setApiError] = useState<string>('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Generate unique IDs for each input to prevent conflicts
-  const [originInputId] = useState(() => `origin-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
-  const [destinationInputId] = useState(() => `destination-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
-
-  // Debug logging
-  useEffect(() => {
-    console.log('🔧 RouteInput initialized with unique IDs:');
-    console.log(`   Origin ID: ${originInputId}`);
-    console.log(`   Destination ID: ${destinationInputId}`);
-  }, [originInputId, destinationInputId]);
-
   // Update local state when initial values change
   useEffect(() => {
     if (initialOrigin && initialOrigin !== origin) {
       setOrigin(initialOrigin);
-      console.log('🔧 Origin updated from props:', initialOrigin);
     }
   }, [initialOrigin]);
 
   useEffect(() => {
     if (initialDestination && initialDestination !== destination) {
       setDestination(initialDestination);
-      console.log('🔧 Destination updated from props:', initialDestination);
     }
   }, [initialDestination]);
 
@@ -62,7 +47,6 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   useEffect(() => {
     const checkApiStatus = async () => {
       try {
-        console.log('🔧 Checking Google Maps API status...');
         const googleMapsService = GoogleMapsService.getInstance();
         const hasApiKey = googleMapsService.hasApiKey();
         
@@ -72,13 +56,10 @@ export const RouteInput: React.FC<RouteInputProps> = ({
           return;
         }
 
-        console.log('🔧 API key found, testing initialization...');
         await googleMapsService.initialize();
-        console.log('✅ Google Maps initialized successfully');
         setApiStatus('ready');
         setApiError('');
       } catch (error) {
-        console.error('❌ Google Maps initialization failed:', error);
         setApiStatus('error');
         setApiError(error instanceof Error ? error.message : 'Failed to initialize Google Maps');
       }
@@ -130,8 +111,6 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('📝 Form submitted:', { origin, destination, stops: stops.length, apiStatus });
-    
     // Clear previous validation errors
     setValidationErrors({});
     
@@ -150,20 +129,17 @@ export const RouteInput: React.FC<RouteInputProps> = ({
     }
 
     if (apiStatus !== 'ready') {
-      console.log('⚠️ API not ready, status:', apiStatus);
       return;
     }
 
     // Proceed with route analysis
     if (origin.trim() && destination.trim() && !isLoading) {
-      console.log('🚀 Starting route analysis...');
       const finalStops = stops.filter(stop => stop.address.trim());
       onRouteRequest(origin.trim(), destination.trim(), finalStops.length > 0 ? finalStops : undefined, isLoop);
     }
   };
 
   const handleOriginChange = (value: string) => {
-    console.log(`🔧 Origin changed: "${value}"`);
     setOrigin(value);
     if (validationErrors.origin) {
       setValidationErrors(prev => ({ ...prev, origin: undefined }));
@@ -171,7 +147,6 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   };
 
   const handleDestinationChange = (value: string) => {
-    console.log(`🔧 Destination changed: "${value}"`);
     setDestination(value);
     if (validationErrors.destination) {
       setValidationErrors(prev => ({ ...prev, destination: undefined }));
@@ -214,9 +189,9 @@ export const RouteInput: React.FC<RouteInputProps> = ({
               <Navigation className="w-6 h-6 text-green-600 dark:text-green-400" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Smart Route Planning</h2>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Route Planning</h2>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Enhanced address processing with intelligent suggestions
+                Enter origin and destination for route analysis
               </p>
             </div>
           </div>
@@ -246,14 +221,13 @@ export const RouteInput: React.FC<RouteInputProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Origin Input with Unique ID */}
+          {/* Origin Input */}
           <div>
-            <SmartAddressInput
-              inputId={originInputId}
+            <LocationInput
               label="Starting Location"
               value={origin}
               onChange={handleOriginChange}
-              placeholder="Enter starting address or select from suggestions"
+              placeholder="Enter starting address"
               disabled={isLoading || apiStatus !== 'ready'}
             />
             {validationErrors.origin && (
@@ -264,14 +238,13 @@ export const RouteInput: React.FC<RouteInputProps> = ({
             )}
           </div>
 
-          {/* Destination Input with Unique ID */}
+          {/* Destination Input */}
           <div>
-            <SmartAddressInput
-              inputId={destinationInputId}
+            <LocationInput
               label="Destination"
               value={destination}
               onChange={handleDestinationChange}
-              placeholder="Enter destination address or select from suggestions"
+              placeholder="Enter destination address"
               disabled={isLoading || apiStatus !== 'ready'}
             />
             {validationErrors.destination && (
@@ -342,41 +315,6 @@ export const RouteInput: React.FC<RouteInputProps> = ({
             )}
           </button>
         </form>
-
-        {/* Smart Features Info */}
-        <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
-          <h4 className="text-sm font-medium text-blue-900 dark:text-blue-200 mb-2 flex items-center gap-2">
-            <MapPin className="w-4 h-4" />
-            Smart Address Features:
-          </h4>
-          <div className="text-xs text-blue-800 dark:text-blue-300 space-y-1">
-            <div>✅ <strong>Live Search:</strong> Real-time Google Places suggestions</div>
-            <div>✅ <strong>Intelligent Ranking:</strong> Saved locations, recent addresses, live results</div>
-            <div>✅ <strong>Auto-Enhancement:</strong> Automatically adds state and formatting</div>
-            <div>✅ <strong>Address Validation:</strong> Real-time feedback on address quality</div>
-            <div>✅ <strong>Coordinate Support:</strong> Direct latitude,longitude input</div>
-            {stops.length > 0 && (
-              <div className="text-purple-700 dark:text-purple-400 font-medium">
-                📍 {stops.length} stop{stops.length > 1 ? 's' : ''} configured (+{getTotalStopTime()} min estimated)
-              </div>
-            )}
-            {apiStatus === 'ready' && (
-              <div className="text-green-700 dark:text-green-400 font-medium">🟢 Live address search enabled</div>
-            )}
-          </div>
-        </div>
-
-        {/* Debug Info in Development */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <div className="text-xs text-gray-600 dark:text-gray-400">
-              <div><strong>Debug Info:</strong></div>
-              <div>Origin ID: {originInputId.substring(0, 16)}...</div>
-              <div>Destination ID: {destinationInputId.substring(0, 16)}...</div>
-              <div>API Status: {apiStatus}</div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Stop Locations Manager */}
