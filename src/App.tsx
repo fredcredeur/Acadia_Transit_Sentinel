@@ -15,6 +15,7 @@ import { useDarkMode } from './hooks/useDarkMode';
 import { useGeolocation } from './hooks/useGeolocation';
 import { LargeVehicleAnalysisPanel, EnhancedRouteComparison, RouteSelectionHelper } from './components/LargeVehicleComponents';
 import { RouteColorManager } from './utils/routeColors';
+import { PlanningMapComponent } from './components/PlanningMapComponent';
 
 function App() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();
@@ -27,15 +28,15 @@ function App() {
   });
 
   const [largeVehicleAnalysis, setLargeVehicleAnalysis] = useState<{
-  stopSignCount: number;
-  trafficLightCount: number;
-  safetyRecommendations: string[];
-  alternativeRouteSuggested: boolean;
-} | undefined>(undefined);
+    stopSignCount: number;
+    trafficLightCount: number;
+    safetyRecommendations: string[];
+    alternativeRouteSuggested: boolean;
+  } | undefined>(undefined);
 
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState('');
-  const [currentView, setCurrentView] = useState<'overview' | 'details'>('overview');
+  const [currentView, setCurrentView] = useState<'planning' | 'overview' | 'details'>('planning');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [useRealData, setUseRealData] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,13 @@ function App() {
   const [lastAnalyzedDestination, setLastAnalyzedDestination] = useState('');
   const [stops, setStops] = useState<StopLocation[]>([]);
   const [initialCenter, setInitialCenter] = useState({ lat: 39.8283, lng: -98.5795 });
+  const [isLoop, setIsLoop] = useState(false);
+
+  // New state for planning map
+  const [planningOrigin, setPlanningOrigin] = useState('');
+  const [planningDestination, setPlanningDestination] = useState('');
+  const [planningStops, setPlanningStops] = useState<StopLocation[]>([]);
+  const [planningMapReady, setPlanningMapReady] = useState(false);
 
   const selectedRoute = routes.find(route => route.id === selectedRouteId);
 
@@ -63,60 +71,91 @@ function App() {
   }, []);
 
   const handleStopsChange = (newStops: StopLocation[]) => {
-    setStops(newStops);
+    if (currentView === 'planning') {
+      setPlanningStops(newStops);
+    } else {
+      setStops(newStops);
+    }
   };
 
-const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[], isLoop?: boolean) => {
-  if (!useRealData) {
-    setError('Google Maps integration requires API key configuration.');
-    return;
-  }
+  const handlePlanningInputChange = (origin: string, destination: string, stops: StopLocation[]) => {
+    setPlanningOrigin(origin);
+    setPlanningDestination(destination);
+    setPlanningStops(stops);
+    setPlanningMapReady(true);
+  };
 
-  setIsAnalyzing(true);
-  setError(null);
+  const handlePlanningMapUpdate = (origin: string, destination: string, stops: StopLocation[]) => {
+    setPlanningOrigin(origin);
+    setPlanningDestination(destination);
+    setPlanningStops(stops);
+  };
 
-  try {
-    const routeAnalysisService = new EnhancedRouteAnalysisService();
-    
-    let stopsToUse = stops || [];
-    
-    const isLargeVehicle = vehicle.length >= 30;
-    
-    console.log(`Analyzing route for ${isLargeVehicle ? 'LARGE' : 'standard'} vehicle:`, {
-      origin,
-      destination, 
-      stops: stopsToUse.map(s => ({ address: s.address, order: s.order })),
-      vehicleLength: vehicle.length,
-      isLoop
-    });
-    
-    const result = await routeAnalysisService.analyzeRoutes({
-      origin,
-      destination,
-      vehicle,
-      stops: stopsToUse,
-      avoidHighways: false,
-      avoidTolls: false,
-      prioritizeSafety: isLargeVehicle
-    });
+  const handleAnalyzeRoutes = async () => {
+    if (!planningOrigin || !planningDestination) {
+      setError('Please enter both origin and destination addresses.');
+      return;
+    }
 
-    setRoutes(result.routes);
-    setSelectedRouteId(result.recommendedRouteId);
-    setLargeVehicleAnalysis(result.largeVehicleAnalysis);
-    
-    setLastAnalyzedOrigin(origin);
-    setLastAnalyzedDestination(destination);
-    setStops(stopsToUse);
-    
-  } catch (err) {
-    console.error('Enhanced route analysis failed:', err);
-    setError(err instanceof Error ? err.message : 'Failed to analyze routes. Please try again.');
-  } finally {
-    setIsAnalyzing(false);
-  }
-};
+    setIsAnalyzing(true);
+    setError(null);
 
-  // NEW: Handle route updates from draggable map points
+    try {
+      const routeAnalysisService = new EnhancedRouteAnalysisService();
+      
+      let stopsToUse = planningStops || [];
+      
+      // Add loop stop if needed
+      if (isLoop && planningOrigin) {
+        const loopStop: StopLocation = {
+          id: 'loop-return',
+          address: planningOrigin.trim(),
+          order: stopsToUse.length,
+          estimatedStopTime: 5,
+          name: 'Return to Start'
+        };
+        stopsToUse = [...stopsToUse, loopStop];
+      }
+      
+      const isLargeVehicle = vehicle.length >= 30;
+      
+      console.log(`Analyzing route for ${isLargeVehicle ? 'LARGE' : 'standard'} vehicle:`, {
+        origin: planningOrigin,
+        destination: planningDestination, 
+        stops: stopsToUse.map(s => ({ address: s.address, order: s.order })),
+        vehicleLength: vehicle.length,
+        isLoop
+      });
+      
+      const result = await routeAnalysisService.analyzeRoutes({
+        origin: planningOrigin,
+        destination: planningDestination,
+        vehicle,
+        stops: stopsToUse,
+        avoidHighways: false,
+        avoidTolls: false,
+        prioritizeSafety: isLargeVehicle
+      });
+
+      setRoutes(result.routes);
+      setSelectedRouteId(result.recommendedRouteId);
+      setLargeVehicleAnalysis(result.largeVehicleAnalysis);
+      
+      setLastAnalyzedOrigin(planningOrigin);
+      setLastAnalyzedDestination(planningDestination);
+      setStops(stopsToUse);
+      
+      // Switch to overview view after analysis
+      setCurrentView('overview');
+      
+    } catch (err) {
+      console.error('Enhanced route analysis failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to analyze routes. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleRouteUpdate = async (routeId: string, newWaypoints: string[]) => {
     if (!useRealData || !lastAnalyzedOrigin || !lastAnalyzedDestination) return;
 
@@ -132,6 +171,56 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
 
     // Re-analyze the route with new waypoints
     await handleRouteAnalysis(lastAnalyzedOrigin, lastAnalyzedDestination, newStops);
+  };
+
+  const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[], isLoop?: boolean) => {
+    if (!useRealData) {
+      setError('Google Maps integration requires API key configuration.');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setError(null);
+
+    try {
+      const routeAnalysisService = new EnhancedRouteAnalysisService();
+      
+      let stopsToUse = stops || [];
+      
+      const isLargeVehicle = vehicle.length >= 30;
+      
+      console.log(`Analyzing route for ${isLargeVehicle ? 'LARGE' : 'standard'} vehicle:`, {
+        origin,
+        destination, 
+        stops: stopsToUse.map(s => ({ address: s.address, order: s.order })),
+        vehicleLength: vehicle.length,
+        isLoop
+      });
+      
+      const result = await routeAnalysisService.analyzeRoutes({
+        origin,
+        destination,
+        vehicle,
+        stops: stopsToUse,
+        avoidHighways: false,
+        avoidTolls: false,
+        prioritizeSafety: isLargeVehicle
+      });
+
+      setRoutes(result.routes);
+      setSelectedRouteId(result.recommendedRouteId);
+      setLargeVehicleAnalysis(result.largeVehicleAnalysis);
+      
+      setLastAnalyzedOrigin(origin);
+      setLastAnalyzedDestination(destination);
+      setStops(stopsToUse);
+      
+    } catch (err) {
+      console.error('Enhanced route analysis failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to analyze routes. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const getRouteDisplayText = () => {
@@ -173,6 +262,16 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
                   Demo Mode
                 </div>
               )}
+              <button
+                onClick={() => setCurrentView('planning')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                  currentView === 'planning'
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                Route Planning
+              </button>
               <button
                 onClick={() => setCurrentView('overview')}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
@@ -221,20 +320,91 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
           </div>
         )}
 
-        {currentView === 'overview' ? (
+        {currentView === 'planning' ? (
+          <div className="space-y-8">
+            {/* Planning View */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Left Column - Vehicle Form and Route Input */}
+              <div className="lg:col-span-1 space-y-6">
+                <VehicleForm vehicle={vehicle} onChange={setVehicle} />
+                {useRealData && (
+                  <RouteInput 
+                    onRouteRequest={handlePlanningInputChange}
+                    isLoading={isAnalyzing}
+                    initialOrigin={planningOrigin}
+                    initialDestination={planningDestination}
+                    stops={planningStops}
+                    onStopsChange={handleStopsChange}
+                    onLoopChange={setIsLoop}
+                    isLoop={isLoop}
+                  />
+                )}
+              </div>
+
+              {/* Right Column - Planning Map */}
+              <div className="lg:col-span-2">
+                <PlanningMapComponent
+                  origin={planningOrigin}
+                  destination={planningDestination}
+                  stops={planningStops}
+                  isReady={planningMapReady}
+                  onMapUpdate={handlePlanningMapUpdate}
+                  className="h-[600px] rounded-lg shadow-md"
+                  initialCenter={initialCenter}
+                />
+                
+                {/* Analyze Button */}
+                {planningMapReady && (
+                  <div className="mt-4">
+                    <button
+                      onClick={handleAnalyzeRoutes}
+                      disabled={!planningOrigin || !planningDestination || isAnalyzing}
+                      className="w-full bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2 shadow-sm hover:shadow-md font-medium"
+                    >
+                      {isAnalyzing ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          Analyzing Routes...
+                        </>
+                      ) : (
+                        <>
+                          <Navigation className="w-5 h-5" />
+                          Analyze Routes
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : currentView === 'overview' ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Left Column - Vehicle Form and Route Input */}
             <div className="lg:col-span-1 space-y-6">
               <VehicleForm vehicle={vehicle} onChange={setVehicle} />
               {useRealData && (
-                <RouteInput 
-                  onRouteRequest={handleRouteAnalysis}
-                  isLoading={isAnalyzing}
-                  initialOrigin={lastAnalyzedOrigin}
-                  initialDestination={lastAnalyzedDestination}
-                  stops={stops}
-                  onStopsChange={handleStopsChange}
-                />
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-green-100 dark:bg-green-900/50 rounded-lg">
+                      <Navigation className="w-6 h-6 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Route Summary</h2>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {getRouteDisplayText() || "No route analyzed yet"}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={() => setCurrentView('planning')}
+                    className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-all duration-200 flex items-center justify-center gap-2 shadow-sm hover:shadow-md font-medium"
+                  >
+                    <Map className="w-5 h-5" />
+                    Return to Planning
+                  </button>
+                </div>
               )}
             </div>
 
@@ -250,132 +420,130 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
           </div>
         ) : (
           <div className="space-y-8">
-    {/* Route Comparison Analytics */}
-    <RouteComparisonAnalytics
-      routes={routes}
-      selectedRouteId={selectedRouteId}
-      vehicle={vehicle}
-      onRouteSelect={setSelectedRouteId}
-    />
+            {/* Route Comparison Analytics */}
+            <RouteComparisonAnalytics
+              routes={routes}
+              selectedRouteId={selectedRouteId}
+              vehicle={vehicle}
+              onRouteSelect={setSelectedRouteId}
+            />
 
-    {/* Main Route Details Grid */}
-    <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-      {/* Route Selection Panel */}
-      <div className="xl:col-span-1 order-2 xl:order-1">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
-              <Navigation className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Route Selection</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {routes.length} route{routes.length !== 1 ? 's' : ''} available
-              </p>
-            </div>
-          </div>
-
-          {/* Quick Route Selector */}
-          <div className="space-y-2">
-            {routes.map((route, index) => {
-              const isSelected = route.id === selectedRouteId;
-              const riskScore = RiskCalculator.calculateRouteRisk(route, vehicle);
-              const routeColor = RouteColorManager.getRouteColor(index);
-              
-              return (
-                <button
-                  key={route.id}
-                  onClick={() => setSelectedRouteId(route.id)}
-                  className={`w-full p-3 rounded-lg border text-left transition-all ${
-                    isSelected 
-                      ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20' 
-                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className="w-4 h-4 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: routeColor }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-900 dark:text-white truncate">
-                        {route.name}
-                      </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {route.totalDistance.toFixed(1)}mi • {Math.round(route.estimatedTime)}min
-                      </div>
+            {/* Main Route Details Grid */}
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+              {/* Route Selection Panel */}
+              <div className="xl:col-span-1 order-2 xl:order-1">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
+                      <Navigation className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                     </div>
-                    <div className="text-right">
-                      <div 
-                        className="text-lg font-bold"
-                        style={{ color: RiskCalculator.getRiskColor(riskScore) }}
-                      >
-                        {Math.round(riskScore)}%
-                      </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Route Selection</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {routes.length} route{routes.length !== 1 ? 's' : ''} available
+                      </p>
                     </div>
                   </div>
-                </button>
-              );
-            })}
-          </div>
 
-          {/* Quick Actions */}
-          {routes.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-              <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Quick Actions:</div>
-              <div className="grid grid-cols-2 gap-2">
-                <button 
-                  onClick={() => {
-                    const safestRoute = routes.reduce((best, current) => {
-                      const currentRisk = RiskCalculator.calculateRouteRisk(current, vehicle);
-                      const bestRisk = RiskCalculator.calculateRouteRisk(best, vehicle);
-                      return currentRisk < bestRisk ? current : best;
-                    });
-                    setSelectedRouteId(safestRoute.id);
-                  }}
-                  className="px-3 py-2 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
-                >
-                  🛡️ Safest
-                </button>
-                <button 
-                  onClick={() => {
-                    const fastestRoute = routes.reduce((best, current) => 
-                      current.estimatedTime < best.estimatedTime ? current : best
-                    );
-                    setSelectedRouteId(fastestRoute.id);
-                  }}
-                  className="px-3 py-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
-                >
-                  ⚡ Fastest
-                </button>
+                  {/* Quick Route Selector */}
+                  <div className="space-y-2">
+                    {routes.map((route, index) => {
+                      const isSelected = route.id === selectedRouteId;
+                      const riskScore = RiskCalculator.calculateRouteRisk(route, vehicle);
+                      const routeColor = RouteColorManager.getRouteColor(index);
+                      
+                      return (
+                        <button
+                          key={route.id}
+                          onClick={() => setSelectedRouteId(route.id)}
+                          className={`w-full p-3 rounded-lg border text-left transition-all ${
+                            isSelected 
+                              ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20' 
+                              : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div 
+                              className="w-4 h-4 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: routeColor }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-900 dark:text-white truncate">
+                                {route.name}
+                              </div>
+                              <div className="text-sm text-gray-600 dark:text-gray-400">
+                                {route.totalDistance.toFixed(1)}mi • {Math.round(route.estimatedTime)}min
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div 
+                                className="text-lg font-bold"
+                                style={{ color: RiskCalculator.getRiskColor(riskScore) }}
+                              >
+                                {Math.round(riskScore)}%
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Quick Actions */}
+                  {routes.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Quick Actions:</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button 
+                          onClick={() => {
+                            const safestRoute = routes.reduce((best, current) => {
+                              const currentRisk = RiskCalculator.calculateRouteRisk(current, vehicle);
+                              const bestRisk = RiskCalculator.calculateRouteRisk(best, vehicle);
+                              return currentRisk < bestRisk ? current : best;
+                            });
+                            setSelectedRouteId(safestRoute.id);
+                          }}
+                          className="px-3 py-2 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                        >
+                          🛡️ Safest
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const fastestRoute = routes.reduce((best, current) => 
+                              current.estimatedTime < best.estimatedTime ? current : best
+                            );
+                            setSelectedRouteId(fastestRoute.id);
+                          }}
+                          className="px-3 py-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                        >
+                          ⚡ Fastest
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Multi-Route Map with Draggable Points */}
+              <div className="xl:col-span-3 order-1 xl:order-2">
+                {routes.length > 0 ? (
+                  <MultiRouteMapComponent
+                    routes={routes}
+                    selectedRouteId={selectedRouteId}
+                    vehicle={vehicle}
+                    onRouteSelect={setSelectedRouteId}
+                    onRouteUpdate={handleRouteUpdate}
+                    className="h-[600px] rounded-lg shadow-md"
+                    initialCenter={initialCenter}
+                  />
+                ) : (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-[600px] flex items-center justify-center">
+                    <p className="text-gray-500 dark:text-gray-400">Enter origin and destination to analyze routes.</p>
+                  </div>
+                )}
               </div>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Multi-Route Map with Draggable Points */}
-      <div className="xl:col-span-3 order-1 xl:order-2">
-        {routes.length > 0 ? (
-          <MultiRouteMapComponent
-            routes={routes}
-            selectedRouteId={selectedRouteId}
-            vehicle={vehicle}
-            onRouteSelect={setSelectedRouteId}
-            onRouteUpdate={handleRouteUpdate}
-            className="h-[600px] rounded-lg shadow-md"
-            initialCenter={initialCenter}
-          />
-        ) : (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-[600px] flex items-center justify-center">
-            <p className="text-gray-500 dark:text-gray-400">Enter origin and destination to analyze routes.</p>
           </div>
-        )}
-      </div>
-
-      
-    </div>
-  </div>
         )}
 
         {/* Setup Instructions */}
