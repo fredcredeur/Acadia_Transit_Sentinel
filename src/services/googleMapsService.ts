@@ -5,7 +5,7 @@ import { VehicleClassificationService } from './vehicleClassificationService';
 export interface RouteRequest {
   origin: string;
   destination: string;
-  waypoints?: string[];
+  waypoints?: google.maps.DirectionsWaypoint[];
   travelMode: google.maps.TravelMode;
   avoidHighways?: boolean;
   avoidTolls?: boolean;
@@ -151,33 +151,61 @@ export class GoogleMapsService {
   public async getRoutes(request: {
     origin: string;
     destination: string;
-    waypoints?: string[];
+    waypoints?: string[] | google.maps.DirectionsWaypoint[];
     travelMode?: google.maps.TravelMode;
     avoidHighways?: boolean;
     avoidTolls?: boolean;
-    departureTime?: Date; // NEW: For live traffic
+    departureTime?: Date;
   }): Promise<google.maps.DirectionsResult> {
     
-    if (!this.isInitialized) {
+    if (!this.isInitialized()) {
       throw new Error('Google Maps service not initialized. Please ensure the API key is configured correctly.');
+    }
+
+    if (!this.directionsService) {
+      throw new Error('Directions service not available');
     }
 
     try {
       console.log('🚦 Getting routes with live traffic data...');
       
-      // Prepare waypoints
+      // Validate and clean addresses
+      const cleanOrigin = await this.validateAndCleanAddress(request.origin);
+      const cleanDestination = await this.validateAndCleanAddress(request.destination);
+      
+      // Prepare waypoints - handle both string arrays and DirectionsWaypoint arrays
       let googleWaypoints: google.maps.DirectionsWaypoint[] = [];
       if (request.waypoints && request.waypoints.length > 0) {
-        googleWaypoints = request.waypoints.map(waypoint => ({
-          location: waypoint,
-          stopover: true
-        }));
+        if (typeof request.waypoints[0] === 'string') {
+          // Convert string array to DirectionsWaypoint array
+          const stringWaypoints = request.waypoints as string[];
+          for (const waypoint of stringWaypoints) {
+            try {
+              const cleanWaypoint = await this.validateAndCleanAddress(waypoint);
+              googleWaypoints.push({
+                location: cleanWaypoint.address,
+                stopover: true
+              });
+            } catch (error) {
+              console.warn('Skipping invalid waypoint:', waypoint, error);
+            }
+          }
+        } else {
+          // Already DirectionsWaypoint array
+          googleWaypoints = request.waypoints as google.maps.DirectionsWaypoint[];
+        }
       }
+
+      console.log('Route request:', {
+        origin: cleanOrigin.address,
+        destination: cleanDestination.address,
+        waypoints: googleWaypoints.length
+      });
 
       // Enhanced directions request with traffic data
       const directionsRequest: google.maps.DirectionsRequest = {
-        origin: request.origin,
-        destination: request.destination,
+        origin: cleanOrigin.address,
+        destination: cleanDestination.address,
         waypoints: googleWaypoints,
         travelMode: request.travelMode || google.maps.TravelMode.DRIVING,
         avoidHighways: request.avoidHighways || false,
@@ -185,23 +213,23 @@ export class GoogleMapsService {
         
         // 🚦 LIVE TRAFFIC CONFIGURATION
         drivingOptions: {
-          departureTime: request.departureTime || new Date(), // Current time = live traffic
-          trafficModel: google.maps.TrafficModel.BEST_GUESS   // Use live traffic data
+          departureTime: request.departureTime || new Date(),
+          trafficModel: google.maps.TrafficModel.BEST_GUESS
         },
         
         // Request multiple route alternatives to compare traffic
         provideRouteAlternatives: true,
         
         // Optimize waypoints for better traffic analysis
-        optimizeWaypoints: false // Keep user-specified order
+        optimizeWaypoints: false
       };
 
       console.log('📡 Requesting routes with traffic model:', directionsRequest.drivingOptions?.trafficModel);
 
       return new Promise((resolve, reject) => {
-        const directionsService = new google.maps.DirectionsService();
-        
-        directionsService.route(directionsRequest, (result, status) => {
+        this.directionsService!.route(directionsRequest, (result, status) => {
+          console.log('Directions API response status:', status);
+          
           if (status === google.maps.DirectionsStatus.OK && result) {
             console.log('✅ Routes received with live traffic data');
             console.log(`📊 Found ${result.routes.length} route(s) with traffic information`);
@@ -226,8 +254,28 @@ export class GoogleMapsService {
             
             resolve(result);
           } else {
-            console.error('❌ Directions request failed:', status);
-            reject(new Error(`Directions request failed: ${status}`));
+            let errorMessage = `Directions request failed: ${status}`;
+            
+            switch (status) {
+              case google.maps.DirectionsStatus.NOT_FOUND:
+                errorMessage = 'Could not find a route between the specified locations. Please check that the addresses are valid and accessible by the selected travel mode.';
+                break;
+              case google.maps.DirectionsStatus.ZERO_RESULTS:
+                errorMessage = 'No route could be found between the origin and destination.';
+                break;
+              case google.maps.DirectionsStatus.OVER_QUERY_LIMIT:
+                errorMessage = 'Too many requests. Please wait and try again.';
+                break;
+              case google.maps.DirectionsStatus.REQUEST_DENIED:
+                errorMessage = 'Directions request denied. Please check API configuration.';
+                break;
+              case google.maps.DirectionsStatus.INVALID_REQUEST:
+                errorMessage = 'Invalid directions request. Please check the origin, destination, and waypoints.';
+                break;
+            }
+            
+            console.error('❌ Directions request failed:', errorMessage);
+            reject(new Error(errorMessage));
           }
         });
       });
@@ -236,7 +284,6 @@ export class GoogleMapsService {
       throw error;
     }
   }
-
 
   public async getLiveTrafficData(lat: number, lng: number, _radiusMeters: number = 1000): Promise<{
     congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
@@ -247,9 +294,6 @@ export class GoogleMapsService {
       severity: 'minor' | 'major';
     }>;
   }> {
-    
-    // Note: This would require Google Traffic API or Distance Matrix API
-    // For now, we'll enhance the existing route-based traffic detection
     
     try {
       // Get current traffic conditions by requesting a short route in the area
@@ -282,7 +326,7 @@ export class GoogleMapsService {
         return {
           congestionLevel,
           averageSpeed: currentSpeed,
-          incidents: [] // Would be populated from traffic incidents API
+          incidents: []
         };
       }
       
@@ -609,14 +653,27 @@ export class GoogleMapsService {
     
     console.log('🚦 Applying routing constraints:', constraints);
     
+    // Convert string waypoints to DirectionsWaypoint format
+    const googleWaypoints: google.maps.DirectionsWaypoint[] = [];
+    if (request.waypoints && request.waypoints.length > 0) {
+      for (const waypoint of request.waypoints) {
+        try {
+          const cleanWaypoint = await this.validateAndCleanAddress(waypoint);
+          googleWaypoints.push({
+            location: cleanWaypoint.address,
+            stopover: true
+          });
+        } catch (error) {
+          console.warn('Skipping invalid waypoint:', waypoint, error);
+        }
+      }
+    }
+    
     // Build Google Maps request with constraints
     const directionsRequest: google.maps.DirectionsRequest = {
       origin: request.origin,
       destination: request.destination,
-      waypoints: request.waypoints?.map(waypoint => ({
-        location: waypoint,
-        stopover: true
-      })) || [],
+      waypoints: googleWaypoints,
       travelMode: google.maps.TravelMode.DRIVING,
       avoidHighways: request.avoidHighways || constraints.avoidResidential,
       avoidTolls: request.avoidTolls,
@@ -625,9 +682,12 @@ export class GoogleMapsService {
     };
     
     return new Promise((resolve, reject) => {
-      const directionsService = new google.maps.DirectionsService();
+      if (!this.directionsService) {
+        reject(new Error('Directions service not available'));
+        return;
+      }
       
-      directionsService.route(directionsRequest, (result, status) => {
+      this.directionsService.route(directionsRequest, (result, status) => {
         if (status === google.maps.DirectionsStatus.OK && result) {
           
           // Filter routes based on vehicle constraints
