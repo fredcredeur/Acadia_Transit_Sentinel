@@ -3,6 +3,9 @@ import { Route } from '../types';
 export const mockRoutes: Route[] = [
   {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
     id: 'route-1',
     name: 'Main Street Route',
     totalDistance: 8.5,
@@ -197,6 +200,7 @@ export const mockRoutes: Route[] = [
         position: 1
       }
     ]
+<<<<<<< HEAD
 =======
     id: '1',
     name: 'Island Explorer Route 1',
@@ -345,5 +349,7 @@ export const mockRoutes: Route[] = [
     duration: 2700,
     riskScore: 75
 >>>>>>> 3c24d9e62665244f95ff965ed5fc261ce073a64a
+=======
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
   }
 ];

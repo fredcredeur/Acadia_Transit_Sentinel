@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 Acadia_Transit_Sentinel
 =======
 # Getting Started with Create React App
@@ -72,3 +73,6 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
 >>>>>>> 3c24d9e62665244f95ff965ed5fc261ce073a64a
+=======
+Acadia_Transit_Sentinel
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068

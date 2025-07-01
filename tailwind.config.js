@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   darkMode: 'class',
   theme: {
@@ -17,6 +20,7 @@ export default {
         slideUp: {
           '0%': { transform: 'translateY(10px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
+<<<<<<< HEAD
 =======
   content: [
     "./index.html",
@@ -51,13 +55,19 @@ export default {
           900: '#4c1d95',
           950: '#2e1065',
 >>>>>>> 3c24d9e62665244f95ff965ed5fc261ce073a64a
+=======
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
         },
       },
     },
   },
   plugins: [],
 <<<<<<< HEAD
+<<<<<<< HEAD
 };
 =======
 }
 >>>>>>> 3c24d9e62665244f95ff965ed5fc261ce073a64a
+=======
+};
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068

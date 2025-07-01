@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
 import React, { useState, useEffect } from 'react';
 import { Shield, Truck, Map, AlertTriangle } from 'lucide-react';
 import { VehicleForm } from './components/VehicleForm';
@@ -637,6 +640,7 @@ function App() {
           </div>
         </div>
       </main>
+<<<<<<< HEAD
 =======
 import { useState } from 'react';
 import { MapComponent } from './components/MapComponent';
@@ -671,10 +675,13 @@ function AppContent() {
         </main>
       </div>
 >>>>>>> 3c24d9e62665244f95ff965ed5fc261ce073a64a
+=======
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
     </div>
   );
 }
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 export default App;
 =======
@@ -686,3 +693,6 @@ export default function App() {
   );
 }
 >>>>>>> 3c24d9e62665244f95ff965ed5fc261ce073a64a
+=======
+export default App;
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068

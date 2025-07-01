@@ -3,6 +3,9 @@
 @tailwind utilities;
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -26,6 +29,7 @@
 .animate-slideUp {
   animation: slideUp 0.3s ease-out;
 }
+<<<<<<< HEAD
 =======
 :root {
   --font-family-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
@@ -58,3 +62,5 @@ body {
   }
 }
 >>>>>>> 3c24d9e62665244f95ff965ed5fc261ce073a64a
+=======
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068

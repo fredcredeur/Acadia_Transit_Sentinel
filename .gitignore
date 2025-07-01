@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
 # Logs
 logs
 *.log
@@ -24,6 +27,7 @@ dist-ssr
 *.sln
 *.sw?
 .env
+<<<<<<< HEAD
 =======
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
@@ -52,3 +56,5 @@ yarn-error.log*
 # Large executables
 tailwindcss.exe
 >>>>>>> 3c24d9e62665244f95ff965ed5fc261ce073a64a
+=======
+>>>>>>> 05667b0be0c30bc14cee79015ab4a93fba3d4068
