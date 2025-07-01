@@ -13,7 +13,6 @@ import { Vehicle, Route, StopLocation } from './types';
 import { RouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useGeolocation } from './hooks/useGeolocation';
-import { routeAnalysisService } from './services/routeAnalysisService';
 import { LargeVehicleAnalysisPanel, EnhancedRouteComparison, RouteSelectionHelper } from './components/LargeVehicleComponents';
 
 function App() {
@@ -79,7 +78,7 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
 
   try {
     // Use the enhanced route analysis service
-    const routeAnalysisService = new routeAnalysisService();
+    const routeAnalysisService = new RouteAnalysisService();
     
     let stopsToUse = stops || [];
     if (isLoop) {
