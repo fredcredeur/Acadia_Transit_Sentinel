@@ -81,14 +81,14 @@ function App() {
   const handlePlanningInputChange = (origin: string, destination: string, stops: StopLocation[]) => {
     setPlanningOrigin(origin);
     setPlanningDestination(destination);
-    setPlanningStops(stops);
+    setPlanningStops(stops || []); // Ensure stops is always an array
     setPlanningMapReady(true);
   };
 
   const handlePlanningMapUpdate = (origin: string, destination: string, stops: StopLocation[]) => {
     setPlanningOrigin(origin);
     setPlanningDestination(destination);
-    setPlanningStops(stops);
+    setPlanningStops(stops || []); // Ensure stops is always an array
   };
 
   const handleAnalyzeRoutes = async () => {
