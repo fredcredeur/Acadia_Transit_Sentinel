@@ -140,7 +140,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         const stopsToUse = selected.stops.slice(0, MAX_WAYPOINTS);
         
         waypoints = stopsToUse.map(stop => ({
-          location: { lat: stop.lat, lng: stop.lng },
+          location: stop.address, // Use address string instead of lat/lng coordinates
           stopover: true
         }));
       } else {
