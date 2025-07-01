@@ -21,7 +21,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   isLoading = false,
   initialOrigin = '',
   initialDestination = '',
-  stops,
+  stops = [], // Provide default empty array
   onStopsChange,
   isLoop = false,
   onLoopChange
