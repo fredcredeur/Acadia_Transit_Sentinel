@@ -13,6 +13,8 @@ import { Vehicle, Route, StopLocation } from './types';
 import { RouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useGeolocation } from './hooks/useGeolocation';
+import { routeAnalysisService } from './services/routeAnalysisService';
+import { LargeVehicleAnalysisPanel, EnhancedRouteComparison, RouteSelectionHelper } from './components/LargeVehicleComponents';
 
 function App() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();
@@ -23,6 +25,13 @@ function App() {
     length: 40.0,
     width: 8.0
   });
+
+  const [largeVehicleAnalysis, setLargeVehicleAnalysis] = useState<{
+  stopSignCount: number;
+  trafficLightCount: number;
+  safetyRecommendations: string[];
+  alternativeRouteSuggested: boolean;
+} | undefined>(undefined);
 
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState('');
@@ -59,7 +68,7 @@ function App() {
     setStops(newStops);
   };
 
-  const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[], isLoop?: boolean) => {
+const handleRouteAnalysis = async (origin: string, destination: string, stops?: StopLocation[], isLoop?: boolean) => {
   if (!useRealData) {
     setError('Google Maps integration requires API key configuration.');
     return;
@@ -69,44 +78,43 @@ function App() {
   setError(null);
 
   try {
-    const routeAnalysisService = new RouteAnalysisService();
+    // Use the enhanced route analysis service
+    const routeAnalysisService = new routeAnalysisService();
     
-    // Use the stops parameter if provided, otherwise fall back to current state
     let stopsToUse = stops || [];
-
     if (isLoop) {
-      // Add origin as the last stop for a loop route
       stopsToUse = [...stopsToUse, { id: 'loop-return', address: origin.trim(), order: stopsToUse.length }];
-      console.log('Loop route enabled. Added origin as final stop:', origin.trim());
     }
     
-    console.log('Analyzing route with:', {
+    const isLargeVehicle = vehicle.length >= 30;
+    
+    console.log(`Analyzing route for ${isLargeVehicle ? 'LARGE' : 'standard'} vehicle:`, {
       origin,
       destination, 
-      stops: stopsToUse.map(s => ({ address: s.address, order: s.order }))
+      stops: stopsToUse.map(s => ({ address: s.address, order: s.order })),
+      vehicleLength: vehicle.length
     });
     
     const result = await routeAnalysisService.analyzeRoutes({
       origin,
       destination,
       vehicle,
-      stops: stopsToUse, // This is the key change - use the parameter
+      stops: stopsToUse,
       avoidHighways: false,
-      avoidTolls: false
+      avoidTolls: false,
+      prioritizeSafety: isLargeVehicle
     });
 
     setRoutes(result.routes);
     setSelectedRouteId(result.recommendedRouteId);
+    setLargeVehicleAnalysis(result.largeVehicleAnalysis);
     
-    // Store the successfully analyzed addresses and stops
     setLastAnalyzedOrigin(origin);
     setLastAnalyzedDestination(destination);
-    
-    // Update the stops state to match what was actually analyzed
-    setStops(stopsToUse); // Update App.tsx's stops state with the final stops, including the loop return
+    setStops(stopsToUse);
     
   } catch (err) {
-    console.error('Route analysis failed:', err);
+    console.error('Enhanced route analysis failed:', err);
     setError(err instanceof Error ? err.message : 'Failed to analyze routes. Please try again.');
   } finally {
     setIsAnalyzing(false);
