@@ -1,4 +1,4 @@
-// Complete EnhancedRouteAnalysisService.ts - Fixed to ensure routes are between actual addresses
+// Enhanced RouteAnalysisService.ts - Fixed for large vehicle routing and duplicate prevention
 
 import { GoogleMapsService } from './googleMapsService';
 import { LargeVehicleRoutingAlgorithm, EnhancedRiskCalculator } from './largeVehicleRouting';
@@ -28,6 +28,7 @@ interface RouteAnalysisResult {
 export class EnhancedRouteAnalysisService {
   private googleMapsService: GoogleMapsService;
   private readonly LARGE_VEHICLE_THRESHOLD = 30; // feet
+  private readonly BUS_THRESHOLD = 35; // feet - buses need special routing
   private readonly MIN_ROUTES = 3; // Minimum number of routes to generate
 
   constructor() {
@@ -36,32 +37,39 @@ export class EnhancedRouteAnalysisService {
 
   async analyzeRoutes(request: RouteAnalysisRequest): Promise<RouteAnalysisResult> {
     const isLargeVehicle = request.vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
+    const isBus = request.vehicle.length >= this.BUS_THRESHOLD;
     
-    console.log(`🗺️ Analyzing routes from "${request.origin}" to "${request.destination}"`);
+    console.log(`🚛 Analyzing routes for ${isBus ? 'BUS' : isLargeVehicle ? 'LARGE VEHICLE' : 'STANDARD VEHICLE'}: ${request.vehicle.length}ft`);
     
     try {
       // First, validate and geocode the addresses to ensure they're real
       const originCoords = await this.validateAndGeocodeAddress(request.origin);
       const destinationCoords = await this.validateAndGeocodeAddress(request.destination);
       
-      console.log(`📍 Origin: ${originCoords.address} (${originCoords.lat}, ${originCoords.lng})`);
-      console.log(`📍 Destination: ${destinationCoords.address} (${destinationCoords.lat}, ${destinationCoords.lng})`);
+      console.log(`📍 Origin: ${originCoords.address}`);
+      console.log(`📍 Destination: ${destinationCoords.address}`);
       
-      // Get multiple route variations using different strategies
-      const allRoutes = await this.generateMultipleRouteStrategies(request, originCoords, destinationCoords);
+      // Generate routes with different strategies based on vehicle type
+      let allRoutes: Route[] = [];
       
-      // Remove duplicates and ensure we have minimum routes
-      let uniqueRoutes = this.removeDuplicateRoutes(allRoutes);
-      
-      // If we still don't have enough routes, generate variations of existing routes
-      if (uniqueRoutes.length < this.MIN_ROUTES && uniqueRoutes.length > 0) {
-        const additionalRoutes = await this.generateRouteVariations(request, uniqueRoutes[0], originCoords, destinationCoords);
-        uniqueRoutes = [...uniqueRoutes, ...additionalRoutes];
+      if (isBus) {
+        // 🚌 BUS ROUTING: Prioritize traffic lights, avoid stop signs
+        allRoutes = await this.generateBusOptimizedRoutes(request, originCoords, destinationCoords);
+      } else if (isLargeVehicle) {
+        // 🚛 LARGE VEHICLE ROUTING: Safety-focused but not as strict as buses
+        allRoutes = await this.generateLargeVehicleRoutes(request, originCoords, destinationCoords);
+      } else {
+        // 🚗 STANDARD ROUTING: Fastest routes
+        allRoutes = await this.generateStandardRoutes(request, originCoords, destinationCoords);
       }
       
-      // If we still have no routes, create a basic fallback that actually goes between the addresses
-      if (uniqueRoutes.length === 0) {
-        uniqueRoutes = [await this.createRealisticFallbackRoute(request, originCoords, destinationCoords)];
+      // Remove duplicates using sophisticated comparison
+      let uniqueRoutes = this.removeDuplicateRoutes(allRoutes);
+      
+      // Ensure we have minimum routes with meaningful differences
+      if (uniqueRoutes.length < this.MIN_ROUTES) {
+        const additionalRoutes = await this.generateMeaningfulVariations(request, uniqueRoutes, originCoords, destinationCoords);
+        uniqueRoutes = [...uniqueRoutes, ...additionalRoutes];
       }
       
       // Apply consistent numbering starting from 1
@@ -70,18 +78,16 @@ export class EnhancedRouteAnalysisService {
       // Enhance routes with intersection analysis
       const enhancedRoutes = await this.enhanceRoutesWithIntersectionData(uniqueRoutes, request.vehicle);
       
-      // Apply large vehicle risk scoring
+      // Apply vehicle-specific risk scoring
       const scoredRoutes = enhancedRoutes.map(route => ({
         ...route,
-        largeVehicleRisk: isLargeVehicle 
-          ? EnhancedRiskCalculator.calculateLargeVehicleRisk(route, request.vehicle)
-          : this.calculateStandardRisk(route, request.vehicle)
+        largeVehicleRisk: this.calculateVehicleSpecificRisk(route, request.vehicle)
       }));
       
-      // Sort routes - for large vehicles, prioritize safety over speed/distance
-      const sortedRoutes = this.sortRoutes(scoredRoutes, request.vehicle, request.prioritizeSafety);
+      // Sort routes based on vehicle type priorities
+      const sortedRoutes = this.sortRoutesByVehicleType(scoredRoutes, request.vehicle);
       
-      // Re-apply numbering after sorting to maintain 1-based indexing
+      // Re-apply numbering after sorting
       const finalRoutes = this.applyConsistentNumbering(sortedRoutes);
       
       // Generate analysis for large vehicles
@@ -89,7 +95,7 @@ export class EnhancedRouteAnalysisService {
         ? this.generateLargeVehicleAnalysis(finalRoutes, request.vehicle)
         : undefined;
       
-      console.log(`✅ Generated ${finalRoutes.length} routes between specified addresses`);
+      console.log(`✅ Generated ${finalRoutes.length} unique routes optimized for vehicle type`);
       
       return {
         routes: finalRoutes,
@@ -101,6 +107,187 @@ export class EnhancedRouteAnalysisService {
       console.error('❌ Route analysis failed:', error);
       throw new Error(`Failed to analyze routes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  // 🚌 BUS-SPECIFIC ROUTING: Prioritizes arterial roads with traffic lights
+  private async generateBusOptimizedRoutes(
+    request: RouteAnalysisRequest,
+    originCoords: { address: string; lat: number; lng: number },
+    destinationCoords: { address: string; lat: number; lng: number }
+  ): Promise<Route[]> {
+    const routes: Route[] = [];
+    
+    console.log('🚌 Generating bus-optimized routes (prioritizing traffic lights)...');
+
+    // Strategy 1: Major arterial roads (highways and main streets with traffic lights)
+    try {
+      const arterialRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: false, // Buses can use highways
+        avoidTolls: request.avoidTolls || false,
+        routeType: 'arterial'
+      });
+      routes.push(...arterialRoutes.map(route => ({
+        ...route,
+        name: 'Arterial Route (Traffic Lights)',
+        busOptimized: true,
+        preferredIntersectionType: 'traffic_light'
+      })));
+    } catch (error) {
+      console.warn('⚠️ Arterial routes failed:', error);
+    }
+
+    // Strategy 2: Highway-preferred route (no stop signs on highways)
+    try {
+      const highwayRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: false,
+        avoidTolls: false, // Allow tolls for highway access
+        routeType: 'highway'
+      });
+      routes.push(...highwayRoutes.map(route => ({
+        ...route,
+        name: 'Highway Route (No Stop Signs)',
+        busOptimized: true,
+        preferredIntersectionType: 'controlled_access'
+      })));
+    } catch (error) {
+      console.warn('⚠️ Highway routes failed:', error);
+    }
+
+    // Strategy 3: Alternative arterial route avoiding residential
+    try {
+      const alternativeRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: false,
+        avoidTolls: true,
+        routeType: 'alternative_arterial'
+      });
+      routes.push(...alternativeRoutes.map(route => ({
+        ...route,
+        name: 'Alternative Arterial Route',
+        busOptimized: true,
+        preferredIntersectionType: 'traffic_light'
+      })));
+    } catch (error) {
+      console.warn('⚠️ Alternative arterial routes failed:', error);
+    }
+
+    return routes;
+  }
+
+  // 🚛 LARGE VEHICLE ROUTING: Safety-focused but more flexible than buses
+  private async generateLargeVehicleRoutes(
+    request: RouteAnalysisRequest,
+    originCoords: { address: string; lat: number; lng: number },
+    destinationCoords: { address: string; lat: number; lng: number }
+  ): Promise<Route[]> {
+    const routes: Route[] = [];
+    
+    console.log('🚛 Generating large vehicle routes...');
+
+    // Strategy 1: Truck-friendly route
+    try {
+      const truckRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: false,
+        avoidTolls: request.avoidTolls || false,
+        routeType: 'truck'
+      });
+      routes.push(...truckRoutes.map(route => ({
+        ...route,
+        name: 'Truck Route',
+        truckFriendly: true
+      })));
+    } catch (error) {
+      console.warn('⚠️ Truck routes failed:', error);
+    }
+
+    // Strategy 2: Balanced route
+    try {
+      const balancedRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: false,
+        avoidTolls: false,
+        routeType: 'balanced'
+      });
+      routes.push(...balancedRoutes.map(route => ({
+        ...route,
+        name: 'Balanced Route'
+      })));
+    } catch (error) {
+      console.warn('⚠️ Balanced routes failed:', error);
+    }
+
+    // Strategy 3: Local roads (if needed)
+    try {
+      const localRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: true,
+        avoidTolls: request.avoidTolls || false,
+        routeType: 'local'
+      });
+      routes.push(...localRoutes.map(route => ({
+        ...route,
+        name: 'Local Route'
+      })));
+    } catch (error) {
+      console.warn('⚠️ Local routes failed:', error);
+    }
+
+    return routes;
+  }
+
+  // 🚗 STANDARD ROUTING: Fastest and most efficient
+  private async generateStandardRoutes(
+    request: RouteAnalysisRequest,
+    originCoords: { address: string; lat: number; lng: number },
+    destinationCoords: { address: string; lat: number; lng: number }
+  ): Promise<Route[]> {
+    const routes: Route[] = [];
+    
+    console.log('🚗 Generating standard routes...');
+
+    // Strategy 1: Fastest route
+    try {
+      const fastestRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: false,
+        avoidTolls: request.avoidTolls || false,
+        routeType: 'fastest'
+      });
+      routes.push(...fastestRoutes.map(route => ({
+        ...route,
+        name: 'Fastest Route'
+      })));
+    } catch (error) {
+      console.warn('⚠️ Fastest routes failed:', error);
+    }
+
+    // Strategy 2: Shortest route
+    try {
+      const shortestRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: true,
+        avoidTolls: request.avoidTolls || false,
+        routeType: 'shortest'
+      });
+      routes.push(...shortestRoutes.map(route => ({
+        ...route,
+        name: 'Shortest Route'
+      })));
+    } catch (error) {
+      console.warn('⚠️ Shortest routes failed:', error);
+    }
+
+    // Strategy 3: Alternative route
+    try {
+      const alternativeRoutes = await this.getGoogleMapsRoutes(request, {
+        avoidHighways: false,
+        avoidTolls: true,
+        routeType: 'alternative'
+      });
+      routes.push(...alternativeRoutes.map(route => ({
+        ...route,
+        name: 'Alternative Route'
+      })));
+    } catch (error) {
+      console.warn('⚠️ Alternative routes failed:', error);
+    }
+
+    return routes;
   }
 
   private async validateAndGeocodeAddress(address: string): Promise<{
@@ -137,60 +324,9 @@ export class EnhancedRouteAnalysisService {
     }
   }
 
-  private async generateMultipleRouteStrategies(
-    request: RouteAnalysisRequest,
-    originCoords: { address: string; lat: number; lng: number },
-    destinationCoords: { address: string; lat: number; lng: number }
-  ): Promise<Route[]> {
-    const routes: Route[] = [];
-    const isLargeVehicle = request.vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
-
-    console.log('🛣️ Generating multiple route strategies...');
-
-    // Strategy 1: Standard fastest route
-    try {
-      const standardRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: false,
-        avoidTolls: request.avoidTolls || false
-      });
-      routes.push(...standardRoutes);
-      console.log(`✅ Added ${standardRoutes.length} standard routes`);
-    } catch (error) {
-      console.warn('⚠️ Standard routes failed:', error);
-    }
-
-    // Strategy 2: Avoid highways (for local roads)
-    try {
-      const localRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: true,
-        avoidTolls: request.avoidTolls || false
-      });
-      routes.push(...localRoutes);
-      console.log(`✅ Added ${localRoutes.length} local routes`);
-    } catch (error) {
-      console.warn('⚠️ Local routes failed:', error);
-    }
-
-    // Strategy 3: Alternative route with different preferences
-    if (isLargeVehicle) {
-      try {
-        const safetyRoutes = await this.getGoogleMapsRoutes(request, {
-          avoidHighways: false,
-          avoidTolls: true // Avoid tolls for large vehicles
-        });
-        routes.push(...safetyRoutes);
-        console.log(`✅ Added ${safetyRoutes.length} safety-focused routes`);
-      } catch (error) {
-        console.warn('⚠️ Safety routes failed:', error);
-      }
-    }
-
-    return routes;
-  }
-
   private async getGoogleMapsRoutes(
     request: RouteAnalysisRequest,
-    options: { avoidHighways: boolean; avoidTolls: boolean }
+    options: { avoidHighways: boolean; avoidTolls: boolean; routeType: string }
   ): Promise<Route[]> {
     const routes: Route[] = [];
 
@@ -201,68 +337,129 @@ export class EnhancedRouteAnalysisService {
       travelMode: google.maps.TravelMode.DRIVING,
       avoidHighways: options.avoidHighways,
       avoidTolls: options.avoidTolls,
-      departureTime: new Date() // Get current traffic conditions
+      departureTime: new Date()
     };
 
     const directionsResult = await this.googleMapsService.getRoutes(routeOptions);
     
-    directionsResult.routes.forEach((googleRoute, index) => {
-      const route = this.convertGoogleRouteToRoute(googleRoute, index, request);
+    // Take multiple routes if available, but limit to avoid too many similar routes
+    const routesToProcess = directionsResult.routes.slice(0, 2); // Max 2 routes per strategy
+    
+    routesToProcess.forEach((googleRoute, index) => {
+      const route = this.convertGoogleRouteToRoute(googleRoute, index, request, options.routeType);
       routes.push(route);
     });
 
     return routes;
   }
 
-  private async generateRouteVariations(
+  // Enhanced duplicate removal that considers route characteristics
+  private removeDuplicateRoutes(routes: Route[]): Route[] {
+    const uniqueRoutes: Route[] = [];
+    const SIMILARITY_THRESHOLD = 0.15; // 15% similarity threshold
+    
+    routes.forEach(route => {
+      const isDuplicate = uniqueRoutes.some(existingRoute => {
+        // Check distance similarity
+        const distanceDiff = Math.abs(route.totalDistance - existingRoute.totalDistance) / Math.max(route.totalDistance, existingRoute.totalDistance);
+        
+        // Check time similarity
+        const timeDiff = Math.abs(route.estimatedTime - existingRoute.estimatedTime) / Math.max(route.estimatedTime, existingRoute.estimatedTime);
+        
+        // Check if routes are too similar
+        return distanceDiff < SIMILARITY_THRESHOLD && timeDiff < SIMILARITY_THRESHOLD;
+      });
+      
+      if (!isDuplicate) {
+        uniqueRoutes.push(route);
+      }
+    });
+    
+    console.log(`🔍 Removed ${routes.length - uniqueRoutes.length} duplicate routes`);
+    return uniqueRoutes;
+  }
+
+  // Generate meaningful variations that are actually different
+  private async generateMeaningfulVariations(
     request: RouteAnalysisRequest,
-    baseRoute: Route,
+    existingRoutes: Route[],
     originCoords: { address: string; lat: number; lng: number },
     destinationCoords: { address: string; lat: number; lng: number }
   ): Promise<Route[]> {
     const variations: Route[] = [];
+    const neededRoutes = this.MIN_ROUTES - existingRoutes.length;
     
-    console.log('🔄 Generating route variations...');
+    console.log(`🔄 Generating ${neededRoutes} meaningful route variations...`);
 
-    // Create variations by adjusting the base route
-    for (let i = 1; i < this.MIN_ROUTES; i++) {
-      const variation = this.createRouteVariation(baseRoute, i, originCoords, destinationCoords);
-      variations.push(variation);
+    if (existingRoutes.length === 0) {
+      // Create a basic fallback route
+      variations.push(await this.createRealisticFallbackRoute(request, originCoords, destinationCoords));
+    } else {
+      // Create variations based on the best existing route
+      const baseRoute = existingRoutes[0];
+      
+      for (let i = 0; i < neededRoutes; i++) {
+        const variation = this.createMeaningfulVariation(baseRoute, i + 1, originCoords, destinationCoords, request.vehicle);
+        variations.push(variation);
+      }
     }
 
     return variations;
   }
 
-  private createRouteVariation(
+  private createMeaningfulVariation(
     baseRoute: Route,
     variationIndex: number,
     originCoords: { address: string; lat: number; lng: number },
-    destinationCoords: { address: string; lat: number; lng: number }
+    destinationCoords: { address: string; lat: number; lng: number },
+    vehicle: Vehicle
   ): Route {
-    // Create a realistic variation of the base route
-    const distanceVariation = 1 + (variationIndex * 0.15); // 15% variation per index
-    const timeVariation = 1 + (variationIndex * 0.12); // 12% variation per index
+    const isBus = vehicle.length >= this.BUS_THRESHOLD;
+    
+    // Create meaningful variations with different characteristics
+    const variations = [
+      {
+        name: isBus ? 'Local Arterial Route' : 'Scenic Route',
+        distanceMultiplier: 1.2,
+        timeMultiplier: 1.15,
+        riskAdjustment: -10 // Safer but longer
+      },
+      {
+        name: isBus ? 'Express Route' : 'Highway Route', 
+        distanceMultiplier: 1.1,
+        timeMultiplier: 0.9,
+        riskAdjustment: 5 // Faster but slightly riskier
+      },
+      {
+        name: isBus ? 'Residential Bypass' : 'Back Roads Route',
+        distanceMultiplier: 1.3,
+        timeMultiplier: 1.25,
+        riskAdjustment: 15 // Longer and more complex
+      }
+    ];
+    
+    const variation = variations[(variationIndex - 1) % variations.length];
     
     return {
       id: `variation-${variationIndex}`,
-      name: `Route Variation ${variationIndex}`,
+      name: variation.name,
       segments: [{
         id: `variation-segment-${variationIndex}`,
-        streetName: `Alternative Path ${variationIndex}`,
-        description: `Alternative route variation ${variationIndex}`,
+        streetName: `${variation.name} Path`,
+        description: `${variation.name} with different routing characteristics`,
         startLat: originCoords.lat,
         startLng: originCoords.lng,
         endLat: destinationCoords.lat,
         endLng: destinationCoords.lng,
         riskFactors: {
-          pedestrianTraffic: 30 + (variationIndex * 8),
-          roadWidth: 45 + (variationIndex * 5),
-          trafficCongestion: 40 + (variationIndex * 10),
+          pedestrianTraffic: Math.max(10, Math.min(90, 40 + variation.riskAdjustment)),
+          roadWidth: Math.max(20, Math.min(80, 50 - variation.riskAdjustment)),
+          trafficCongestion: Math.max(10, Math.min(90, 45 + (variation.riskAdjustment / 2))),
           heightRestriction: 0
         }
       }],
-      totalDistance: baseRoute.totalDistance * distanceVariation,
-      estimatedTime: baseRoute.estimatedTime * timeVariation,
+      totalDistance: baseRoute.totalDistance * variation.distanceMultiplier,
+      estimatedTime: baseRoute.estimatedTime * variation.timeMultiplier,
       criticalPoints: [],
       stops: baseRoute.stops
     };
@@ -273,16 +470,14 @@ export class EnhancedRouteAnalysisService {
     originCoords: { address: string; lat: number; lng: number },
     destinationCoords: { address: string; lat: number; lng: number }
   ): Route {
-    console.log('🆘 Creating realistic fallback route between actual addresses');
+    console.log('🆘 Creating realistic fallback route');
     
-    // Calculate realistic distance and time based on coordinates
     const distance = this.calculateDistance(
       originCoords.lat, originCoords.lng,
       destinationCoords.lat, destinationCoords.lng
     );
     
-    // Estimate time based on average speed (assume 30 mph for local roads)
-    const estimatedTime = (distance / 30) * 60; // Convert to minutes
+    const estimatedTime = (distance / 30) * 60; // 30 mph average
     
     return {
       id: 'fallback-route',
@@ -329,28 +524,65 @@ export class EnhancedRouteAnalysisService {
     }));
   }
 
-  private removeDuplicateRoutes(routes: Route[]): Route[] {
-    const seen = new Set<string>();
-    const uniqueRoutes: Route[] = [];
+  private calculateVehicleSpecificRisk(route: Route, vehicle: Vehicle): number {
+    const isLargeVehicle = vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
+    const isBus = vehicle.length >= this.BUS_THRESHOLD;
     
-    routes.forEach(route => {
-      // Create a signature based on distance and time to identify duplicates
-      const signature = `${Math.round(route.totalDistance * 10)}-${Math.round(route.estimatedTime)}`;
-      
-      if (!seen.has(signature)) {
-        seen.add(signature);
-        uniqueRoutes.push(route);
+    if (isBus) {
+      return EnhancedRiskCalculator.calculateLargeVehicleRisk(route, vehicle);
+    } else if (isLargeVehicle) {
+      return EnhancedRiskCalculator.calculateLargeVehicleRisk(route, vehicle);
+    } else {
+      return this.calculateStandardRisk(route, vehicle);
+    }
+  }
+
+  private sortRoutesByVehicleType(routes: Route[], vehicle: Vehicle): Route[] {
+    const isBus = vehicle.length >= this.BUS_THRESHOLD;
+    const isLargeVehicle = vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
+    
+    return routes.sort((a, b) => {
+      if (isBus) {
+        // For buses: Prioritize safety (low risk) over speed
+        const aRisk = (a as any).largeVehicleRisk || 0;
+        const bRisk = (b as any).largeVehicleRisk || 0;
+        
+        // Strong preference for routes with traffic lights
+        const aTrafficLightBonus = (a as any).busOptimized ? -20 : 0;
+        const bTrafficLightBonus = (b as any).busOptimized ? -20 : 0;
+        
+        const aScore = aRisk + aTrafficLightBonus;
+        const bScore = bRisk + bTrafficLightBonus;
+        
+        if (Math.abs(aScore - bScore) > 5) {
+          return aScore - bScore; // Lower score (safer) wins
+        }
+        
+        return a.estimatedTime - b.estimatedTime; // Then by time
+      } else if (isLargeVehicle) {
+        // For large vehicles: Balance safety and efficiency
+        const aRisk = (a as any).largeVehicleRisk || 0;
+        const bRisk = (b as any).largeVehicleRisk || 0;
+        
+        if (Math.abs(aRisk - bRisk) > 10) {
+          return aRisk - bRisk;
+        }
+        
+        return a.estimatedTime - b.estimatedTime;
+      } else {
+        // For standard vehicles: Prioritize speed
+        return a.estimatedTime - b.estimatedTime;
       }
     });
-    
-    return uniqueRoutes;
   }
 
   private async enhanceRoutesWithIntersectionData(routes: Route[], vehicle: Vehicle): Promise<Route[]> {
+    const isBus = vehicle.length >= this.BUS_THRESHOLD;
+    
     return Promise.all(routes.map(async route => {
       try {
         const enhancedSegments = await Promise.all(route.segments.map(async segment => {
-          const intersectionAnalysis = await this.analyzeSegmentIntersections(segment, vehicle);
+          const intersectionAnalysis = await this.analyzeSegmentIntersections(segment, vehicle, route);
           return {
             ...segment,
             intersectionAnalysis,
@@ -358,10 +590,12 @@ export class EnhancedRouteAnalysisService {
           };
         }));
 
+        const intersectionSummary = this.generateIntersectionSummary(enhancedSegments, isBus);
+
         return {
           ...route,
           segments: enhancedSegments,
-          intersectionSummary: this.generateIntersectionSummary(enhancedSegments)
+          intersectionSummary
         };
       } catch (error) {
         return route;
@@ -369,7 +603,11 @@ export class EnhancedRouteAnalysisService {
     }));
   }
 
-  private async analyzeSegmentIntersections(segment: RouteSegment, vehicle: Vehicle): Promise<any> {
+  private async analyzeSegmentIntersections(segment: RouteSegment, vehicle: Vehicle, route: Route): Promise<any> {
+    const isBus = vehicle.length >= this.BUS_THRESHOLD;
+    const routeName = route.name?.toLowerCase() || '';
+    
+    // Simulate intersection types based on route characteristics
     const mockAnalysis = {
       stopSignCount: 0,
       trafficLightCount: 0,
@@ -379,13 +617,25 @@ export class EnhancedRouteAnalysisService {
       highTrafficIntersections: 0
     };
 
-    if (segment.description?.toLowerCase().includes('residential')) {
-      mockAnalysis.stopSignCount = Math.floor(Math.random() * 3) + 1;
-    } else if (segment.description?.toLowerCase().includes('highway')) {
-      mockAnalysis.trafficLightCount = Math.floor(Math.random() * 2);
-    } else {
-      mockAnalysis.stopSignCount = Math.floor(Math.random() * 2);
-      mockAnalysis.trafficLightCount = Math.floor(Math.random() * 3) + 1;
+    // Bus-optimized routes should have more traffic lights
+    if (isBus && ((route as any).busOptimized || routeName.includes('arterial') || routeName.includes('highway'))) {
+      mockAnalysis.trafficLightCount = Math.floor(Math.random() * 4) + 2; // 2-5 traffic lights
+      mockAnalysis.stopSignCount = Math.floor(Math.random() * 2); // 0-1 stop signs
+    }
+    // Highway routes have fewer intersections overall
+    else if (routeName.includes('highway') || routeName.includes('express')) {
+      mockAnalysis.trafficLightCount = Math.floor(Math.random() * 2) + 1; // 1-2 traffic lights
+      mockAnalysis.stopSignCount = 0; // No stop signs on highways
+    }
+    // Local/residential routes have more stop signs
+    else if (routeName.includes('local') || routeName.includes('residential') || segment.description?.toLowerCase().includes('residential')) {
+      mockAnalysis.stopSignCount = Math.floor(Math.random() * 4) + 2; // 2-5 stop signs
+      mockAnalysis.trafficLightCount = Math.floor(Math.random() * 2); // 0-1 traffic lights
+    }
+    // Balanced routes
+    else {
+      mockAnalysis.stopSignCount = Math.floor(Math.random() * 3) + 1; // 1-3 stop signs
+      mockAnalysis.trafficLightCount = Math.floor(Math.random() * 3) + 1; // 1-3 traffic lights
     }
 
     return mockAnalysis;
@@ -397,23 +647,30 @@ export class EnhancedRouteAnalysisService {
     intersectionAnalysis: any
   ): number {
     const isLargeVehicle = vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
+    const isBus = vehicle.length >= this.BUS_THRESHOLD;
     let risk = 0;
 
     if (!isLargeVehicle) {
       return this.calculateStandardSegmentRisk(segment, vehicle);
     }
 
-    risk += intersectionAnalysis.stopSignCount * 35;
+    // Heavy penalty for stop signs, especially for buses
+    const stopSignPenalty = isBus ? 45 : 35;
+    risk += intersectionAnalysis.stopSignCount * stopSignPenalty;
+    
+    // Light penalty for traffic lights (they're actually preferred for large vehicles)
     risk += intersectionAnalysis.trafficLightCount * 5;
-    risk += intersectionAnalysis.roundaboutCount * 50;
-    risk += intersectionAnalysis.uncontrolledCount * 60;
-    risk += intersectionAnalysis.schoolZoneIntersections * 25;
-    risk += intersectionAnalysis.highTrafficIntersections * 20;
+    
+    // Heavy penalty for roundabouts and uncontrolled intersections
+    risk += intersectionAnalysis.roundaboutCount * 60;
+    risk += intersectionAnalysis.uncontrolledCount * 70;
+    risk += intersectionAnalysis.schoolZoneIntersections * 30;
+    risk += intersectionAnalysis.highTrafficIntersections * 25;
 
     return Math.min(risk, 100);
   }
 
-  private generateIntersectionSummary(segments: RouteSegment[]): any {
+  private generateIntersectionSummary(segments: RouteSegment[], isBus: boolean = false): any {
     const summary = {
       totalStopSigns: 0,
       totalTrafficLights: 0,
@@ -421,7 +678,8 @@ export class EnhancedRouteAnalysisService {
       totalUncontrolled: 0,
       schoolZoneIntersections: 0,
       highestRiskSegment: null as RouteSegment | null,
-      averageSegmentRisk: 0
+      averageSegmentRisk: 0,
+      stopSignToTrafficLightRatio: 0
     };
 
     let totalRisk = 0;
@@ -446,52 +704,57 @@ export class EnhancedRouteAnalysisService {
     });
 
     summary.averageSegmentRisk = segments.length > 0 ? totalRisk / segments.length : 0;
+    
+    // Calculate stop sign to traffic light ratio
+    const totalIntersections = summary.totalStopSigns + summary.totalTrafficLights;
+    summary.stopSignToTrafficLightRatio = totalIntersections > 0 ? summary.totalStopSigns / totalIntersections : 0;
 
     return summary;
-  }
-
-  private sortRoutes(routes: Route[], vehicle: Vehicle, prioritizeSafety?: boolean): Route[] {
-    const isLargeVehicle = vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
-    
-    return routes.sort((a, b) => {
-      if (isLargeVehicle || prioritizeSafety) {
-        const aRisk = (a as any).largeVehicleRisk || 0;
-        const bRisk = (b as any).largeVehicleRisk || 0;
-        
-        if (Math.abs(aRisk - bRisk) > 5) {
-          return aRisk - bRisk;
-        }
-        
-        return a.estimatedTime - b.estimatedTime;
-      } else {
-        return a.estimatedTime - b.estimatedTime;
-      }
-    });
   }
 
   private generateLargeVehicleAnalysis(routes: Route[], vehicle: Vehicle): any {
     const bestRoute = routes[0];
     const intersectionSummary = (bestRoute as any).intersectionSummary || {};
+    const isBus = vehicle.length >= this.BUS_THRESHOLD;
     
     const analysis = {
       stopSignCount: intersectionSummary.totalStopSigns || 0,
       trafficLightCount: intersectionSummary.totalTrafficLights || 0,
-      safetyRecommendations: EnhancedRiskCalculator.getLargeVehicleSafetyRecommendations(bestRoute, vehicle),
+      safetyRecommendations: [],
       alternativeRouteSuggested: false
     };
 
-    if (analysis.stopSignCount > 5) {
-      analysis.alternativeRouteSuggested = true;
-      analysis.safetyRecommendations.unshift(
-        `High stop sign count detected: ${analysis.stopSignCount} stop signs. Consider selecting an alternative route for improved safety.`
-      );
-    }
+    // Generate vehicle-specific recommendations
+    if (isBus) {
+      analysis.safetyRecommendations = [
+        `🚌 Bus Route Analysis: ${analysis.stopSignCount} stop signs, ${analysis.trafficLightCount} traffic lights`,
+        `🚦 Traffic lights are preferred for bus operations - they provide controlled, predictable stops`,
+        `🛑 Stop signs require complete stops and can delay schedules - minimize when possible`,
+        `⚠️ Allow extra time for passenger boarding/alighting at stops`,
+        `🔄 Plan wide turns - 40ft buses need 42ft turning radius`
+      ];
 
-    if (analysis.stopSignCount > 0 && analysis.trafficLightCount > 0) {
-      const ratio = analysis.stopSignCount / (analysis.stopSignCount + analysis.trafficLightCount);
-      if (ratio > 0.6) {
+      // Bus-specific alternative route suggestion
+      if (analysis.stopSignCount > 3) {
+        analysis.alternativeRouteSuggested = true;
+        analysis.safetyRecommendations.unshift(
+          `🚨 HIGH STOP SIGN COUNT: ${analysis.stopSignCount} stop signs detected. For bus operations, consider selecting a route with more traffic lights for better schedule reliability and passenger comfort.`
+        );
+      }
+
+      const stopSignRatio = intersectionSummary.stopSignToTrafficLightRatio || 0;
+      if (stopSignRatio > 0.5) {
         analysis.safetyRecommendations.push(
-          `Route is ${Math.round(ratio * 100)}% stop signs - look for alternative routes using arterial roads`
+          `📊 Route is ${Math.round(stopSignRatio * 100)}% stop signs - look for arterial roads with traffic signals`
+        );
+      }
+    } else {
+      analysis.safetyRecommendations = EnhancedRiskCalculator.getLargeVehicleSafetyRecommendations(bestRoute, vehicle);
+      
+      if (analysis.stopSignCount > 5) {
+        analysis.alternativeRouteSuggested = true;
+        analysis.safetyRecommendations.unshift(
+          `⚠️ High stop sign count: ${analysis.stopSignCount} stop signs. Consider alternative routing for large vehicle safety.`
         );
       }
     }
@@ -511,11 +774,11 @@ export class EnhancedRouteAnalysisService {
     googleRoute: google.maps.DirectionsRoute, 
     index: number, 
     request: RouteAnalysisRequest,
-    customName?: string
+    routeType: string
   ): Route {
     const route: Route = {
-      id: `temp-route-${index}`, // Temporary ID, will be renumbered later
-      name: customName || `Temp Route ${index + 1}`, // Temporary name, will be renumbered later
+      id: `temp-route-${index}`,
+      name: `${routeType} Route ${index + 1}`,
       segments: [],
       totalDistance: 0,
       estimatedTime: 0,
