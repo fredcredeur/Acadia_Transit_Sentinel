@@ -425,7 +425,8 @@ class LargeVehicleRoutingAlgorithm {
         id: `waypoint-${i}`,
         address: wp,
         order: i
-      }))
+      })),
+      overallRisk: 0 // Default/mock value; should be calculated in real implementation
     };
   }
 }
