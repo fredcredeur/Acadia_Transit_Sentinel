@@ -1,4 +1,4 @@
-// Fixed src/components/SmartAddressInput.tsx
+// Fixed SmartAddressInput.tsx - Resolves state synchronization issue
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MapPin, CheckCircle, AlertTriangle, Star, Crosshair, Search, Loader2, Clock, Navigation, AlertCircle } from 'lucide-react';
@@ -47,6 +47,10 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   const [placesReady, setPlacesReady] = useState(false);
   const [placesError, setPlacesError] = useState<string>('');
   
+  // 🔧 FIX: Separate internal input state from prop value
+  const [internalValue, setInternalValue] = useState(value);
+  const [isSelectingFromSuggestion, setIsSelectingFromSuggestion] = useState(false);
+  
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimeoutRef = useRef<number>();
   const placesServiceRef = useRef<PlacesService | null>(null);
@@ -61,11 +65,30 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     console.log(`🗺️ [${inputId.substring(0, 8)}] ${label}: ${message}`, data || '');
   };
 
-  // ✅ FIXED: Enhanced Places service initialization with retries
+  // 🔧 FIX: Sync internal value with prop value, but only when not selecting from suggestions
+  useEffect(() => {
+    if (!isSelectingFromSuggestion && value !== internalValue) {
+      debugLog(`Syncing prop value to internal: "${value}"`);
+      setInternalValue(value);
+    }
+  }, [value, isSelectingFromSuggestion, internalValue]);
+
+  // 🔧 FIX: Reset selection flag after a brief delay
+  useEffect(() => {
+    if (isSelectingFromSuggestion) {
+      const resetTimer = setTimeout(() => {
+        setIsSelectingFromSuggestion(false);
+        debugLog('Reset suggestion selection flag');
+      }, 100);
+      return () => clearTimeout(resetTimer);
+    }
+  }, [isSelectingFromSuggestion]);
+
+  // Enhanced Places service initialization with retries
   useEffect(() => {
     const initializePlaces = async () => {
       const maxAttempts = 3;
-      const attemptDelay = 1000; // 1 second between attempts
+      const attemptDelay = 1000;
       
       while (initializationAttempts.current < maxAttempts) {
         try {
@@ -75,7 +98,6 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
           const placesService = PlacesService.getInstance();
           await placesService.initialize();
           
-          // ✅ FIXED: Test the service to make sure it actually works
           const diagnostics = placesService.getDiagnosticInfo();
           debugLog('Places service diagnostics:', diagnostics);
           
@@ -117,12 +139,14 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   useEffect(() => {
     if (coordinates) {
       const coordString = `${coordinates.lat},${coordinates.lng}`;
+      setIsSelectingFromSuggestion(true);
+      setInternalValue(coordString);
       onChange(coordString);
       debugLog('Set current location:', coordString);
     }
   }, [coordinates, onChange]);
 
-  // ✅ FIXED: Enhanced Google Places search with better error handling
+  // Enhanced Google Places search with better error handling
   const performGooglePlacesSearch = useCallback(async (searchQuery: string): Promise<AddressSuggestion[]> => {
     if (!placesServiceRef.current || !placesReady || searchQuery.length < 2) {
       return [];
@@ -141,8 +165,8 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       const predictions = await placesServiceRef.current.getPlacePredictions(searchQuery, {
         types: ['geocode', 'establishment'],
         componentRestrictions: { country: 'us' },
-        location: new google.maps.LatLng(30.2241, -92.0198), // Lafayette, LA center
-        radius: 50000 // 50km radius for Louisiana focus
+        location: new google.maps.LatLng(30.2241, -92.0198),
+        radius: 50000
       });
 
       debugLog(`📍 Google returned ${predictions.length} suggestions`);
@@ -165,7 +189,6 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     } catch (error) {
       debugLog('❌ Google Places search failed:', error);
       
-      // ✅ FIXED: Try to recover from errors
       if (error instanceof Error && error.message.includes('not initialized')) {
         debugLog('🔄 Attempting to reinitialize Places service...');
         try {
@@ -184,7 +207,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     }
   }, [placesReady, inputId]);
 
-  // ✅ FIXED: Enhanced suggestion generation with fallback strategies
+  // Enhanced suggestion generation with fallback strategies
   const generateSuggestions = useCallback(async (input: string) => {
     if (input.length < 1) {
       setSuggestions([]);
@@ -241,13 +264,12 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       return b.confidence - a.confidence;
     });
 
-    // Limit to 6 suggestions for clean UI
     const finalSuggestions = allSuggestions.slice(0, 6);
     setSuggestions(finalSuggestions);
     debugLog(`Final suggestions: ${finalSuggestions.length} (${finalSuggestions.filter(s => s.type === 'google').length} from Google)`);
   }, [performGooglePlacesSearch, savedLocations, coordinates, inputId, placesReady]);
 
-  // Enhanced debounced search
+  // Enhanced debounced search - use internalValue instead of value
   useEffect(() => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
@@ -257,11 +279,10 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       return;
     }
 
-    // ✅ FIXED: Different debounce times based on Places availability
-    const debounceDelay = placesReady ? 200 : 500; // Faster when Places is ready
+    const debounceDelay = placesReady ? 200 : 500;
 
     debounceTimeoutRef.current = setTimeout(() => {
-      generateSuggestions(value);
+      generateSuggestions(internalValue); // 🔧 FIX: Use internalValue
     }, debounceDelay);
 
     return () => {
@@ -269,12 +290,12 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [value, showSuggestions, generateSuggestions, placesReady]);
+  }, [internalValue, showSuggestions, generateSuggestions, placesReady]); // 🔧 FIX: Depend on internalValue
 
-  // Validate address
+  // Validate address - use internalValue
   useEffect(() => {
-    validateAddress(value);
-  }, [value]);
+    validateAddress(internalValue); // 🔧 FIX: Use internalValue
+  }, [internalValue]);
 
   const validateAddress = (address: string) => {
     if (address.length < 2) {
@@ -331,6 +352,9 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       }
     }
 
+    // 🔧 FIX: Set the selection flag BEFORE updating values
+    setIsSelectingFromSuggestion(true);
+    setInternalValue(finalAddress);
     onChange(finalAddress);
     setShowSuggestions(false);
     currentSearchRef.current = '';
@@ -343,14 +367,16 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         onLocationSelect?.(savedLocation);
       }
     }
+
+    debugLog(`🔧 Suggestion selected, final address: "${finalAddress}"`);
   };
 
   const handleFocus = () => {
     debugLog('Input focused');
     setShowSuggestions(true);
     
-    if (value.length >= 1) {
-      generateSuggestions(value);
+    if (internalValue.length >= 1) { // 🔧 FIX: Use internalValue
+      generateSuggestions(internalValue);
     }
   };
 
@@ -359,14 +385,19 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
     setTimeout(() => setShowSuggestions(false), 300);
   };
 
+  // 🔧 FIX: Handle input changes properly
   const handleInputChange = (newValue: string) => {
     debugLog(`Input changed: "${newValue}"`);
-    onChange(newValue);
     
-    currentSearchRef.current = '';
-    
-    if (newValue.length >= 1 && !showSuggestions) {
-      setShowSuggestions(true);
+    // Only update if we're not in the middle of selecting a suggestion
+    if (!isSelectingFromSuggestion) {
+      setInternalValue(newValue);
+      onChange(newValue);
+      currentSearchRef.current = '';
+      
+      if (newValue.length >= 1 && !showSuggestions) {
+        setShowSuggestions(true);
+      }
     }
   };
 
@@ -439,7 +470,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
         <input
           ref={inputRef}
           type="text"
-          value={value}
+          value={internalValue} {/* 🔧 FIX: Use internalValue for display */}
           onChange={(e) => handleInputChange(e.target.value)}
           onFocus={handleFocus}
           onBlur={handleBlur}
@@ -553,11 +584,11 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
             )}
             
             {/* No results message */}
-            {!isLoadingSuggestions && suggestions.length === 0 && value.length >= 2 && (
+            {!isLoadingSuggestions && suggestions.length === 0 && internalValue.length >= 2 && (
               <div className="px-3 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">
                 {placesReady ? (
                   <div>
-                    <div>No suggestions found for "{value}"</div>
+                    <div>No suggestions found for "{internalValue}"</div>
                     <div className="text-xs mt-1">Try being more specific or check spelling</div>
                   </div>
                 ) : (
@@ -573,13 +604,23 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
       )}
 
       {/* Help Text */}
-      {!showSuggestions && value.length === 0 && (
+      {!showSuggestions && internalValue.length === 0 && (
         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
           {placesReady ? (
             <span>💡 Powered by Google Maps - start typing for live suggestions</span>
           ) : (
             <span>💡 Start typing to search saved locations{placesError && ' (live search unavailable)'}</span>
           )}
+        </div>
+      )}
+
+      {/* Debug Info in Development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs text-gray-600 dark:text-gray-400">
+          <div><strong>Debug:</strong></div>
+          <div>Internal: "{internalValue}"</div>
+          <div>Prop: "{value}"</div>
+          <div>Selecting: {isSelectingFromSuggestion ? 'Yes' : 'No'}</div>
         </div>
       )}
     </div>
