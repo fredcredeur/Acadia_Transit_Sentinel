@@ -116,6 +116,24 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
   }
 };
 
+  // NEW: Handle route updates from draggable map points
+  const handleRouteUpdate = async (routeId: string, newWaypoints: string[]) => {
+    if (!useRealData || !lastAnalyzedOrigin || !lastAnalyzedDestination) return;
+
+    console.log('🔄 Updating route with new waypoints:', newWaypoints);
+    
+    // Convert waypoints back to stops format
+    const newStops: StopLocation[] = newWaypoints.map((waypoint, index) => ({
+      id: `updated-stop-${index}`,
+      address: waypoint,
+      order: index,
+      estimatedStopTime: 15
+    }));
+
+    // Re-analyze the route with new waypoints
+    await handleRouteAnalysis(lastAnalyzedOrigin, lastAnalyzedDestination, newStops);
+  };
+
   const getRouteDisplayText = () => {
     if (!lastAnalyzedOrigin || !lastAnalyzedDestination) return '';
     
@@ -270,8 +288,8 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
                   onClick={() => setSelectedRouteId(route.id)}
                   className={`w-full p-3 rounded-lg border text-left transition-all ${
                     isSelected 
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-                      : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                      ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20' 
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -336,7 +354,7 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
         </div>
       </div>
 
-      {/* Multi-Route Map */}
+      {/* Multi-Route Map with Draggable Points */}
       <div className="xl:col-span-3 order-1 xl:order-2">
         {routes.length > 0 ? (
           <MultiRouteMapComponent
@@ -344,6 +362,7 @@ const handleRouteAnalysis = async (origin: string, destination: string, stops?: 
             selectedRouteId={selectedRouteId}
             vehicle={vehicle}
             onRouteSelect={setSelectedRouteId}
+            onRouteUpdate={handleRouteUpdate}
             className="h-[600px] rounded-lg shadow-md"
             initialCenter={initialCenter}
           />
