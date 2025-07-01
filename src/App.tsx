@@ -326,7 +326,7 @@ function App() {
       </div>
 
       {/* Multi-Route Map */}
-      <div className="xl:col-span-2 order-1 xl:order-2">
+      <div className="xl:col-span-3 order-1 xl:order-2">
         {routes.length > 0 ? (
           <MultiRouteMapComponent
             routes={routes}
@@ -343,10 +343,7 @@ function App() {
         )}
       </div>
 
-      {/* Enhanced Critical Points Panel */}
-      <div className="xl:col-span-1 order-3">
-        <CriticalPoints route={selectedRoute} vehicle={vehicle} />
-      </div>
+      
     </div>
   </div>
         )}
