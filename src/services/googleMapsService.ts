@@ -363,19 +363,25 @@ export class GoogleMapsService {
       provideRouteAlternatives: true
     };
     return new Promise((resolve, reject) => {
-      if (!this.directionsService) reject(new Error('Directions service not available'));
-      this.directionsService.route(dr, (result, status) => {
-        if (status === google.maps.DirectionsStatus.OK && result) {
-          const filtered = this.filterRoutesByConstraints(result.routes, constraints);
-          if (filtered.length) {
-            result.routes = filtered;
-            resolve(result);
-          } else reject(new Error('No suitable routes found for this vehicle type.'));
-        } else reject(new Error(`Directions request failed: ${status}`));
-      });
-    });
+  if (!this.directionsService) {
+    reject(new Error('Directions service not available'));
+    return; // Add this return statement
   }
-
+  
+  this.directionsService.route(dr, (result, status) => {
+    if (status === google.maps.DirectionsStatus.OK && result) {
+      const filtered = this.filterRoutesByConstraints(result.routes, constraints);
+      if (filtered.length) {
+        result.routes = filtered;
+        resolve(result);
+      } else {
+        reject(new Error('No suitable routes found for this vehicle type.'));
+      }
+    } else {
+      reject(new Error(`Directions request failed: ${status}`));
+    }
+  });
+});
   private filterRoutesByConstraints(routes: google.maps.DirectionsRoute[], constraints: RoutingConstraints): google.maps.DirectionsRoute[] {
     return routes.filter(route => {
       for (const leg of route.legs) {

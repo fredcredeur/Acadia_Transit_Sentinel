@@ -9,7 +9,7 @@ import { RiskCalculator } from './utils/riskCalculator';
 import { RouteInput } from './components/RouteInput';
 import { DarkModeToggle } from './components/DarkModeToggle';
 import { Vehicle, Route, StopLocation } from './types';
-import { EnhancedRouteAnalysisService } from './services/routeAnalysisService';
+import { RouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useGeolocation } from './hooks/useGeolocation';
 import { LargeVehicleAnalysisPanel } from './components/LargeVehicleComponents';
@@ -105,7 +105,7 @@ function App() {
     setError(null);
 
     try {
-      const routeAnalysisService = new EnhancedRouteAnalysisService();
+      const routeAnalysisService = new RouteAnalysisService();
       
       let stopsToUse = planningStops || [];
       
@@ -188,7 +188,7 @@ function App() {
     setError(null);
 
     try {
-      const routeAnalysisService = new EnhancedRouteAnalysisService();
+      const routeAnalysisService = new RouteAnalysisService();
       
       let stopsToUse = stops || [];
       
