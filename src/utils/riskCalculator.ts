@@ -629,7 +629,7 @@ export class RiskCalculator {
       mitigators.push(isBus ? 'Truck-friendly road design with adequate width and turning radii for bus operations' : 'Truck-friendly road design with adequate width and turning radii');
     }
     
-    return { primaryConcerns: concerns, recommendations, mitigators };
+    return { primaryConcerns: concerns, recommendations, riskMitigators: mitigators };
   }
 
   // Existing methods with minor updates...

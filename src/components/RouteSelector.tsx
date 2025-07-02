@@ -77,23 +77,23 @@ export function RouteSelector({ onRouteSelect }: RouteSelectorProps) {
                 <h3 className="font-medium">{route.name}</h3>
                 <div className="mt-1 flex items-center text-sm text-gray-500">
                   <Clock className="h-4 w-4 mr-1" />
-                  <span>{Math.round(route.duration / 60)} min</span>
+                  <span>{Math.round(route.estimatedTime / 60)} min</span>
                   <span className="mx-2">•</span>
                   <Navigation className="h-4 w-4 mr-1" />
-                  <span>{(route.distance / 1000).toFixed(1)} km</span>
+                  <span>{(route.totalDistance / 1000).toFixed(1)} km</span>
                 </div>
               </div>
               
-              {route.riskScore !== undefined && (
+              {route.overallRisk !== undefined && (
                 <div className={`
                   flex items-center px-2 py-1 rounded-full text-xs font-medium
-                  ${route.riskScore < 30 ? 'bg-green-100 text-green-800' : 
-                    route.riskScore < 70 ? 'bg-yellow-100 text-yellow-800' : 
+                  ${route.overallRisk < 30 ? 'bg-green-100 text-green-800' : 
+                    route.overallRisk < 70 ? 'bg-yellow-100 text-yellow-800' : 
                     'bg-red-100 text-red-800'}
                 `}>
-                  {route.riskScore < 30 ? (
+                  {route.overallRisk < 30 ? (
                     <span>Low Risk</span>
-                  ) : route.riskScore < 70 ? (
+                  ) : route.overallRisk < 70 ? (
                     <span>Medium Risk</span>
                   ) : (
                     <span className="flex items-center">

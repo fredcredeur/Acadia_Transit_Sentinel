@@ -120,7 +120,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
 
       // Clear existing route
       if (directionsRenderer) {
-        directionsRenderer.setDirections({ routes: [] } as google.maps.DirectionsResult);
+        directionsRenderer.setDirections({ routes: [] } as any); // Cast to any to clear
       }
       if (routePolyline) {
         routePolyline.setMap(null);
@@ -223,8 +223,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             fillColor: 'rgba(34, 197, 94, 0.2)', // Semi-transparent green
             fillOpacity: 0.5,
             strokeColor: '#22c55e',
-            strokeWeight: 2,
-            strokeDasharray: [2, 2] // Dashed circle
+            strokeWeight: 2
           },
           clickable: false,
           zIndex: 1 // Below other markers
@@ -315,7 +314,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
           });
           
           if (!bounds.isEmpty()) {
-            map.fitBounds(bounds, { padding: 50 });
+            map.fitBounds(bounds);
             console.log('Map bounds updated to show full route');
           }
           
@@ -346,10 +345,12 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             if (waypoint.location) {
               if (typeof waypoint.location === 'string') {
                 // Skip string locations
-              } else if ('lat' in waypoint.location && 'lng' in waypoint.location) {
+              } else if ('lat' in waypoint.location && 'lng' in waypoint.location && typeof waypoint.location.lat === 'number' && typeof waypoint.location.lng === 'number') {
                 path.push(new google.maps.LatLng(waypoint.location.lat, waypoint.location.lng));
+              } else if (typeof (waypoint.location as google.maps.LatLng).lat === 'function' && typeof (waypoint.location as google.maps.LatLng).lng === 'function') {
+                path.push(new google.maps.LatLng((waypoint.location as google.maps.LatLng).lat(), (waypoint.location as google.maps.LatLng).lng()));
               } else {
-                path.push(waypoint.location as google.maps.LatLng);
+                // Invalid object type, skip
               }
             }
           });
@@ -371,7 +372,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
           const bounds = new google.maps.LatLngBounds();
           path.forEach(point => bounds.extend(point));
           if (!bounds.isEmpty()) {
-            map.fitBounds(bounds, { padding: 50 });
+            map.fitBounds(bounds);
           }
         }
       });

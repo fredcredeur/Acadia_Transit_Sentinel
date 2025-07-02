@@ -4,7 +4,6 @@ import { VehicleForm } from './components/VehicleForm';
 import { MultiRouteMapComponent } from './components/MultiRouteMapComponent';
 import { RouteComparison } from './components/RouteComparison';
 import { RouteComparisonAnalytics } from './components/RouteComparisonAnalytics';
-import { CriticalPoints } from './components/CriticalPoints';
 import { Navigation } from 'lucide-react';
 import { RiskCalculator } from './utils/riskCalculator';
 import { RouteInput } from './components/RouteInput';
@@ -13,7 +12,7 @@ import { Vehicle, Route, StopLocation } from './types';
 import { EnhancedRouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useGeolocation } from './hooks/useGeolocation';
-import { LargeVehicleAnalysisPanel, EnhancedRouteComparison, RouteSelectionHelper } from './components/LargeVehicleComponents';
+import { LargeVehicleAnalysisPanel } from './components/LargeVehicleComponents';
 import { RouteColorManager } from './utils/routeColors';
 import { PlanningMapComponent } from './components/PlanningMapComponent';
 
@@ -78,7 +77,7 @@ function App() {
     }
   };
 
-  const handlePlanningInputChange = (origin: string, destination: string, stops: StopLocation[], loopEnabled?: boolean) => {
+  const handlePlanningInputChange = (origin: string, destination: string, stops?: StopLocation[], loopEnabled?: boolean) => {
     setPlanningOrigin(origin);
     setPlanningDestination(destination);
     setPlanningStops(stops || []); // Ensure stops is always an array

@@ -205,17 +205,19 @@ export class GoogleMapsService {
       const result = await this.getRoutes({ origin: testOrigin, destination: testDestination, departureTime: new Date() });
       if (result.routes.length > 0) {
         const leg = result.routes[0].legs[0];
-        const duration = leg.duration?.value || 0;
-        const durationInTraffic = leg.duration_in_traffic?.value || duration;
-        const distance = leg.distance?.value || 1;
-        const currentSpeed = (distance / durationInTraffic) * 2.237;
-        const congestionRatio = duration / durationInTraffic;
-        let congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
-        if (congestionRatio <= 1.1) congestionLevel = 'low';
-        else if (congestionRatio <= 1.3) congestionLevel = 'moderate';
-        else if (congestionRatio <= 1.7) congestionLevel = 'heavy';
-        else congestionLevel = 'severe';
-        return { congestionLevel, averageSpeed: currentSpeed, incidents: [] };
+        if (leg) { // Ensure leg is defined
+          const duration = leg.duration?.value || 0;
+          const durationInTraffic = (leg.duration_in_traffic?.value || duration) || 1; // Ensure not zero to prevent division by zero
+          const distance = leg.distance?.value || 1;
+          const currentSpeed = (distance / durationInTraffic) * 2.237;
+          const congestionRatio = duration / durationInTraffic;
+          let congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
+          if (congestionRatio <= 1.1) congestionLevel = 'low';
+          else if (congestionRatio <= 1.3) congestionLevel = 'moderate';
+          else if (congestionRatio <= 1.7) congestionLevel = 'heavy';
+          else congestionLevel = 'severe';
+          return { congestionLevel, averageSpeed: currentSpeed, incidents: [] };
+        }
       }
       return { congestionLevel: 'low', averageSpeed: 30, incidents: [] };
     } catch {

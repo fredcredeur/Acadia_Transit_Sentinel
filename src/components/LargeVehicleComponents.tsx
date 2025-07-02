@@ -1,6 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Shield, Navigation, Clock, MapPin, Truck, StopCircle, 
-         Traffic, Construction, School, CheckCircle, XCircle } from 'lucide-react';
+import { AlertTriangle, Shield, Truck, StopCircle } from 'lucide-react';
 import { Route, Vehicle } from '../types';
 
 interface LargeVehicleAnalysisProps {
@@ -96,7 +95,7 @@ export const LargeVehicleAnalysisPanel: React.FC<LargeVehicleAnalysisProps> = ({
 
         <div className="p-4 rounded-lg border-l-4 border-green-500 bg-green-50 dark:bg-green-900/20">
           <div className="flex items-center gap-2 mb-2">
-            <Traffic className="w-5 h-5 text-green-600 dark:text-green-400" />
+            <AlertTriangle className="w-5 h-5 text-green-600 dark:text-green-400" />
             <span className="font-medium text-gray-900 dark:text-white">Traffic Lights</span>
           </div>
           <div className="text-2xl font-bold text-gray-900 dark:text-white mb-1">

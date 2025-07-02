@@ -25,6 +25,14 @@ export interface RoutingConstraints {
   maxTurnAngle: number;
 }
 
+export interface RiskFactors {
+  pedestrianTraffic: number;
+  roadWidth: number;
+  trafficCongestion: number;
+  speedLimit: number;
+  heightRestriction: number;
+}
+
 export interface RouteSegment {
   id: string;
   startLat: number;
@@ -33,13 +41,7 @@ export interface RouteSegment {
   endLng: number;
   streetName: string;
   riskScore: number;
-  riskFactors: {
-    pedestrianTraffic: number;
-    roadWidth: number;
-    trafficCongestion: number;
-    speedLimit: number;
-    heightRestriction: number;
-  };
+  riskFactors: RiskFactors;
   description: string;
   liveTrafficData?: { // 🚦 NEW: Live traffic information
     congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
@@ -113,6 +115,32 @@ export interface RouteAnalysisRequest {
   avoidHighways?: boolean;
   avoidTolls?: boolean;
   isLoop?: boolean;
+}
+
+export interface Location {
+  lat: number;
+  lng: number;
+}
+
+export interface NamedRiskFactor {
+  id: string;
+  name: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high';
+  location: { lat: number; lng: number };
+}
+
+export interface MapContextType {
+  map: google.maps.Map | null;
+  setMap: (map: google.maps.Map | null) => void;
+  selectedRoute: Route | null;
+  setSelectedRoute: (route: Route | null) => void;
+  origin: Location | null;
+  setOrigin: (location: Location | null) => void;
+  destination: Location | null;
+  setDestination: (location: Location | null) => void;
+  riskFactors: NamedRiskFactor[];
+  setRiskFactors: (riskFactors: NamedRiskFactor[]) => void;
 }
 
 declare global {

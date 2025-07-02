@@ -10,8 +10,8 @@ type RouteSegment = BaseRouteSegment & {
   largeVehicleRisk?: number;
 };
 
-// Define RiskFactor interface locally since it's not exported from '../types'
-interface RiskFactor {
+// Define NamedRiskFactor interface
+export interface NamedRiskFactor {
   id: string;
   name: string;
   description: string;
@@ -966,7 +966,7 @@ export class EnhancedRouteAnalysisService {
 // (Removed duplicate import - moved to top of file)
 
 // Mock risk factors in the Acadia area
-const RISK_FACTORS: RiskFactor[] = [
+const RISK_FACTORS: NamedRiskFactor[] = [
   {
     id: 'risk-1',
     name: 'Steep Road',
@@ -1005,8 +1005,8 @@ const RISK_FACTORS: RiskFactor[] = [
 ];
 
 // Calculate risk score for a route based on proximity to known risk factors
-export function analyzeRouteRisk(route: Route): { route: Route, riskFactors: RiskFactor[] } {
-  const relevantRiskFactors: RiskFactor[] = [];
+export function analyzeRouteRisk(route: Route): { route: Route, riskFactors: NamedRiskFactor[] } {
+  const relevantRiskFactors: NamedRiskFactor[] = [];
   let totalRiskScore = 0;
   
   // Check each segment in the route against known risk factors
@@ -1115,7 +1115,7 @@ function distanceToLineSegment(
 }
 
 // Get all risk factors for display
-export function getAllRiskFactors(): RiskFactor[] {
+export function getAllRiskFactors(): NamedRiskFactor[] {
   return RISK_FACTORS;
 
 }

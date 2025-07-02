@@ -311,10 +311,14 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         }
       } else if (waypoint.location && typeof waypoint.location === 'object') {
         const loc = waypoint.location as google.maps.LatLng | google.maps.LatLngLiteral;
-        if ('lat' in loc && 'lng' in loc) {
+        if ('lat' in loc && 'lng' in loc && typeof loc.lat === 'number' && typeof loc.lng === 'number') {
+          // It's a LatLngLiteral
           position = new google.maps.LatLng(loc.lat, loc.lng);
+        } else if (typeof (loc as google.maps.LatLng).lat === 'function' && typeof (loc as google.maps.LatLng).lng === 'function') {
+          // It's a google.maps.LatLng object
+          position = new google.maps.LatLng((loc as google.maps.LatLng).lat(), (loc as google.maps.LatLng).lng());
         } else {
-          position = loc as google.maps.LatLng;
+          return; // Invalid object type
         }
       } else {
         return; // Skip invalid waypoints

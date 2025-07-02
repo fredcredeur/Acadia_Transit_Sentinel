@@ -420,6 +420,7 @@ class LargeVehicleRoutingAlgorithm {
       segments: [], // Would be populated by routing service
       totalDistance: baseDistance * multiplier,
       estimatedTime: (baseDistance * multiplier) / 30 * 60, // Assume 30 mph average
+      overallRisk: 0, // Mock overall risk
       criticalPoints: [],
       stops: waypoints?.map((wp, i) => ({
         id: `waypoint-${i}`,
