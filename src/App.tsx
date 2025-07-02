@@ -156,8 +156,7 @@ function App() {
 
         // Sort routes by overall risk (safest first)
         analyzedRoutes.sort((a, b) => a.overallRisk - b.overallRisk);
-
-      
+      }
       
       const largeVehicleAnalysisData = generateLargeVehicleAnalysis(vehicle, analyzedRoutes);
 
