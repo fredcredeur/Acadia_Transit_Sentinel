@@ -939,6 +939,7 @@ export class EnhancedRouteAnalysisService {
 
     return route;
   }
+}
 
 // (Removed duplicate import - moved to top of file)
 
@@ -986,25 +987,25 @@ export function analyzeRouteRisk(route: Route): { route: Route, riskFactors: Ris
   const relevantRiskFactors: RiskFactor[] = [];
   let totalRiskScore = 0;
   
-  // Check each point in the route against known risk factors
-  route.points.forEach((point, index) => {
-    if (index === 0) return; // Skip starting point
-    
-    const prevPoint = route.points[index - 1];
-    
+  // Check each segment in the route against known risk factors
+  route.segments.forEach((segment, index) => {
+    if (index === 0) return; // Skip starting segment
+
+    const prevSegment = route.segments[index - 1];
+
     // Check each risk factor
     RISK_FACTORS.forEach(factor => {
       // Calculate if this route segment passes near the risk factor
       const isNearRisk = isPointNearLineSegment(
         factor.location,
-        prevPoint.location.position,
-        point.location.position,
+        { lat: prevSegment.endLat, lng: prevSegment.endLng },
+        { lat: segment.startLat, lng: segment.startLng },
         0.01 // ~1km threshold
       );
-      
+
       if (isNearRisk) {
         relevantRiskFactors.push(factor);
-        
+
         // Add to risk score based on severity
         switch (factor.severity) {
           case 'low':
