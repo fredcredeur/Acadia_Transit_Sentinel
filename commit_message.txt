@@ -1,1 +1,1 @@
-Fix: Add missing risk factor properties to RiskFactors type in App.tsx
+Feat: Enhance route risk analysis for large vehicles based on intersection and turn types.
