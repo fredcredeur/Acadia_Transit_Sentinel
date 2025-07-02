@@ -2,7 +2,7 @@
 
 import { GoogleMapsService } from './googleMapsService';
 import { LargeVehicleRoutingAlgorithm, EnhancedRiskCalculator } from './largeVehicleRouting';
-import { Route, Vehicle, StopLocation, RouteSegment } from '../types';
+import { Route, Vehicle, StopLocation, RouteSegment, RiskFactor } from '../types';
 
 interface RouteAnalysisRequest {
   origin: string;
@@ -940,7 +940,7 @@ export class EnhancedRouteAnalysisService {
     return route;
   }
 
-import { Route, RiskFactor } from '../types';
+// (Removed duplicate import - moved to top of file)
 
 // Mock risk factors in the Acadia area
 const RISK_FACTORS: RiskFactor[] = [
