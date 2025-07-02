@@ -8,7 +8,7 @@ import { Navigation } from 'lucide-react';
 import { RiskCalculator } from './utils/riskCalculator';
 import { RouteInput } from './components/RouteInput';
 import { DarkModeToggle } from './components/DarkModeToggle';
-import { Vehicle, Route, StopLocation } from './types';
+import { Vehicle, Route, StopLocation, RouteSegment } from './types';
 import { RouteAnalysisService } from './services/routeAnalysisService';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useGeolocation } from './hooks/useGeolocation';
@@ -53,6 +53,84 @@ function App() {
   const [planningMapReady, setPlanningMapReady] = useState(false);
 
   const selectedRoute = routes.find(route => route.id === selectedRouteId);
+
+  // Helper functions for mock data generation
+  const createMockRoutes = (origin: string, destination: string, vehicle: Vehicle, stops: StopLocation[], isLoop: boolean): Route[] => {
+    const baseDistance = 10 + Math.random() * 20; // 10-30 miles
+    const routes: Route[] = [];
+
+    for (let i = 0; i < 3; i++) {
+      const route: Route = {
+        id: `route-${i + 1}`,
+        name: i === 0 ? 'Fastest Route' : i === 1 ? 'Safest Route' : 'Balanced Route',
+        segments: createMockSegments(origin, destination, 5 + i * 2),
+        totalDistance: baseDistance + i * 2,
+        estimatedTime: (baseDistance + i * 2) * 2.5 + stops.length * 5, // Rough estimate
+        overallRisk: 30 + i * 15 + Math.random() * 10,
+        criticalPoints: [],
+        stops: stops,
+        waypoints: stops.map(stop => stop.address)
+      };
+
+      // Add critical points for higher risk routes
+      if (i > 0) {
+        route.criticalPoints = [{
+          segmentId: route.segments[Math.floor(route.segments.length / 2)].id,
+          position: Math.floor(route.segments.length / 2),
+          type: 'intersection',
+          riskLevel: 'high',
+          description: `High-risk intersection on ${route.name}`
+        }];
+      }
+
+      routes.push(route);
+    }
+
+    return routes;
+  };
+
+  const createMockSegments = (origin: string, destination: string, count: number): RouteSegment[] => {
+    const segments: RouteSegment[] = [];
+    
+    for (let i = 0; i < count; i++) {
+      segments.push({
+        id: `segment-${i}`,
+        startLat: 30.2241 + (i * 0.01),
+        startLng: -92.0198 + (i * 0.01),
+        endLat: 30.2241 + ((i + 1) * 0.01),
+        endLng: -92.0198 + ((i + 1) * 0.01),
+        streetName: `Street ${i + 1}`,
+        riskScore: Math.random() * 100,
+        riskFactors: {
+          pedestrianTraffic: Math.random() * 100,
+          roadWidth: Math.random() * 100,
+          trafficCongestion: Math.random() * 100,
+          speedLimit: 25 + Math.random() * 30,
+          heightRestriction: 0
+        },
+        description: `Segment ${i + 1} of route`
+      });
+    }
+    
+    return segments;
+  };
+
+  const generateMockLargeVehicleAnalysis = (vehicle: Vehicle, routes: Route[]) => {
+    const isLargeVehicle = vehicle.length >= 30;
+    
+    if (!isLargeVehicle) return undefined;
+    
+    return {
+      stopSignCount: Math.floor(Math.random() * 5) + 1,
+      trafficLightCount: Math.floor(Math.random() * 8) + 2,
+      safetyRecommendations: [
+        'Use extra caution at intersections due to vehicle size',
+        'Allow additional stopping distance',
+        'Check for height restrictions on bridges'
+      ],
+      alternativeRouteSuggested: Math.random() > 0.5
+    };
+  };
 
   useEffect(() => {
     if (userLocation) {
@@ -105,8 +183,6 @@ function App() {
     setError(null);
 
     try {
-      const routeAnalysisService = new RouteAnalysisService();
-      
       let stopsToUse = planningStops || [];
       
       // Add loop stop if needed
@@ -131,16 +207,13 @@ function App() {
         isLoop
       });
       
-      const result = await routeAnalysisService.analyzeRoutes({
-        origin: planningOrigin,
-        destination: planningDestination,
-        vehicle,
-        stops: stopsToUse,
-        avoidHighways: false,
-        avoidTolls: false,
-        prioritizeSafety: isLargeVehicle,
-        isLoop: isLoop
-      });
+      // Create mock routes using helper functions
+      const mockRoutes = createMockRoutes(planningOrigin, planningDestination, vehicle, stopsToUse, isLoop);
+      const result = {
+        routes: mockRoutes,
+        recommendedRouteId: mockRoutes[0]?.id || '',
+        largeVehicleAnalysis: generateMockLargeVehicleAnalysis(vehicle, mockRoutes)
+      };
 
       setRoutes(result.routes);
       setSelectedRouteId(result.recommendedRouteId);
@@ -188,8 +261,6 @@ function App() {
     setError(null);
 
     try {
-      const routeAnalysisService = new RouteAnalysisService();
-      
       let stopsToUse = stops || [];
       
       // Use the provided loop parameter if available, otherwise use the current state
@@ -223,16 +294,13 @@ function App() {
         isLoop: useLoop
       });
       
-      const result = await routeAnalysisService.analyzeRoutes({
-        origin,
-        destination,
-        vehicle,
-        stops: stopsToUse,
-        avoidHighways: false,
-        avoidTolls: false,
-        prioritizeSafety: isLargeVehicle,
-        isLoop: useLoop
-      });
+      // Create mock routes using helper functions
+      const mockRoutes = createMockRoutes(origin, destination, vehicle, stopsToUse, useLoop);
+      const result = {
+        routes: mockRoutes,
+        recommendedRouteId: mockRoutes[0]?.id || '',
+        largeVehicleAnalysis: generateMockLargeVehicleAnalysis(vehicle, mockRoutes)
+      };
 
       setRoutes(result.routes);
       setSelectedRouteId(result.recommendedRouteId);
