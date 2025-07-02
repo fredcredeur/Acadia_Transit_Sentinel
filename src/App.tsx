@@ -58,11 +58,12 @@ function App() {
   const createMockRoutes = (origin: string, destination: string, vehicle: Vehicle, stops: StopLocation[], isLoop: boolean): Route[] => {
     const baseDistance = 10 + Math.random() * 20; // 10-30 miles
     const routes: Route[] = [];
+    const routeNames = [`Fastest route to ${destination}`, `Safest route to ${destination}`, `Balanced route to ${destination}`];
 
     for (let i = 0; i < 3; i++) {
       const route: Route = {
         id: `route-${i + 1}`,
-        name: i === 0 ? 'Fastest Route' : i === 1 ? 'Safest Route' : 'Balanced Route',
+        name: routeNames[i] || `Route ${i + 1} to ${destination}`,
         segments: createMockSegments(origin, destination, 5 + i * 2),
         totalDistance: baseDistance + i * 2,
         estimatedTime: (baseDistance + i * 2) * 2.5 + stops.length * 5, // Rough estimate
@@ -91,7 +92,9 @@ function App() {
 
   const createMockSegments = (origin: string, destination: string, count: number): RouteSegment[] => {
     const segments: RouteSegment[] = [];
-    
+    const originStreet = origin.split(',')[0] || 'Origin St';
+    const destinationStreet = destination.split(',')[0] || 'Destination Ave';
+
     for (let i = 0; i < count; i++) {
       segments.push({
         id: `segment-${i}`,
@@ -99,7 +102,7 @@ function App() {
         startLng: -92.0198 + (i * 0.01),
         endLat: 30.2241 + ((i + 1) * 0.01),
         endLng: -92.0198 + ((i + 1) * 0.01),
-        streetName: `Street ${i + 1}`,
+        streetName: i === 0 ? originStreet : (i === count - 1 ? destinationStreet : `Connecting Street ${i}`),
         riskScore: Math.random() * 100,
         riskFactors: {
           pedestrianTraffic: Math.random() * 100,
@@ -108,10 +111,10 @@ function App() {
           speedLimit: 25 + Math.random() * 30,
           heightRestriction: 0
         },
-        description: `Segment ${i + 1} of route`
+        description: `Segment from ${originStreet} towards ${destinationStreet}`
       });
     }
-    
+
     return segments;
   };
 
