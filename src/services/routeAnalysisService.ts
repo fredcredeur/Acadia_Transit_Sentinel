@@ -2,7 +2,22 @@
 
 import { GoogleMapsService } from './googleMapsService';
 import { LargeVehicleRoutingAlgorithm, EnhancedRiskCalculator } from './largeVehicleRouting';
-import { Route, Vehicle, StopLocation, RouteSegment, RiskFactor } from '../types';
+import { Route, Vehicle, StopLocation, RouteSegment as BaseRouteSegment } from '../types';
+
+// Extend RouteSegment to include intersectionAnalysis and largeVehicleRisk
+type RouteSegment = BaseRouteSegment & {
+  intersectionAnalysis?: any;
+  largeVehicleRisk?: number;
+};
+
+// Define RiskFactor interface locally since it's not exported from '../types'
+interface RiskFactor {
+  id: string;
+  name: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high';
+  location: { lat: number; lng: number };
+}
 
 interface RouteAnalysisRequest {
   origin: string;
@@ -102,12 +117,12 @@ export class EnhancedRouteAnalysisService {
       
       console.log(`✅ Generated ${finalRoutes.length} unique routes with consistent risk calculations`);
       
+      // Return the analysis result
       return {
         routes: finalRoutes,
-        recommendedRouteId: finalRoutes[0]?.id || '',
+        recommendedRouteId: finalRoutes.length > 0 ? finalRoutes[0].id : '',
         largeVehicleAnalysis
       };
-      
     } catch (error) {
       console.error('❌ Route analysis failed:', error);
       throw new Error(`Failed to analyze routes: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -577,12 +592,14 @@ export class EnhancedRouteAnalysisService {
           trafficCongestion: Math.max(10, Math.min(90, 45 + (variation.riskAdjustment / 2))),
           speedLimit: 35,
           heightRestriction: 0
-        }
+        },
+        riskScore: 0
       }],
       totalDistance: baseRoute.totalDistance * variation.distanceMultiplier,
       estimatedTime: baseRoute.estimatedTime * variation.timeMultiplier,
       criticalPoints: [],
-      stops: baseRoute.stops
+      stops: baseRoute.stops,
+      overallRisk: 0 // Added to satisfy Route type
     };
   }
 
@@ -617,12 +634,14 @@ export class EnhancedRouteAnalysisService {
           trafficCongestion: 45,
           speedLimit: 35,
           heightRestriction: 0
-        }
+        },
+        riskScore: 0
       }],
       totalDistance: distance,
       estimatedTime: estimatedTime,
       criticalPoints: [],
-      stops: request.stops
+      stops: request.stops,
+      overallRisk: 0 // Added to satisfy Route type
     };
   }
 
@@ -708,7 +727,8 @@ export class EnhancedRouteAnalysisService {
           return {
             ...segment,
             intersectionAnalysis,
-            largeVehicleRisk: this.calculateSegmentRiskForLargeVehicle(segment, vehicle, intersectionAnalysis)
+            largeVehicleRisk: this.calculateSegmentRiskForLargeVehicle(segment, vehicle, intersectionAnalysis),
+            riskScore: this.calculateSegmentRiskForLargeVehicle(segment, vehicle, intersectionAnalysis) // Assign calculated risk to segment.riskScore
           };
         }));
 
@@ -844,7 +864,7 @@ export class EnhancedRouteAnalysisService {
     const analysis = {
       stopSignCount: intersectionSummary.totalStopSigns || 0,
       trafficLightCount: intersectionSummary.totalTrafficLights || 0,
-      safetyRecommendations: [],
+      safetyRecommendations: [] as string[],
       alternativeRouteSuggested: false
     };
 
@@ -907,7 +927,8 @@ export class EnhancedRouteAnalysisService {
       totalDistance: 0,
       estimatedTime: 0,
       criticalPoints: [],
-      stops: request.stops
+      stops: request.stops,
+      overallRisk: 0
     };
 
     googleRoute.legs.forEach(leg => {
@@ -930,11 +951,12 @@ export class EnhancedRouteAnalysisService {
             roadWidth: 50,
             trafficCongestion: 50,
             speedLimit: 35,
-            heightRestriction: 0
-          }
-        };
-        route.segments.push(segment);
-      });
+          heightRestriction: 0
+        },
+        riskScore: 0 // Added default riskScore
+      };
+      route.segments.push(segment);
+    });
     });
 
     return route;
@@ -1028,7 +1050,7 @@ export function analyzeRouteRisk(route: Route): { route: Route, riskFactors: Ris
   // Create a new route with the risk score
   const analyzedRoute: Route = {
     ...route,
-    riskScore: normalizedScore
+    overallRisk: normalizedScore
   };
   
   return {
