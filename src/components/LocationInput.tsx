@@ -41,7 +41,7 @@ export const LocationInput: React.FC<LocationInputProps> = ({
   
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const debounceTimeoutRef = useRef<number>();
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   
   const { savedLocations, addLocation, markAsUsed, searchLocations } = useSavedLocations();
   const { coordinates, isLoading: isGettingLocation, error: locationError, getCurrentLocation } = useGeolocation();

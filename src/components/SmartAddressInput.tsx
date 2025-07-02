@@ -69,7 +69,7 @@ export const SmartAddressInput: React.FC<SmartAddressInputProps> = ({
   const lastPropValue = useRef(value);
   
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceTimeoutRef = useRef<number>();
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const placesServiceRef = useRef<PlacesService | null>(null);
   const currentSearchRef = useRef<string>('');
   const initializationAttempts = useRef<number>(0);
