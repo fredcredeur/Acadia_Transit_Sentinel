@@ -1,1 +1,1 @@
-Feat: Enhance route risk analysis for large vehicles based on intersection and turn types.
+Feat: Implement real route analysis and sorting by safety, remove mock routes.

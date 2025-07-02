@@ -157,20 +157,7 @@ function App() {
         // Sort routes by overall risk (safest first)
         analyzedRoutes.sort((a, b) => a.overallRisk - b.overallRisk);
 
-      } else {
-        // Fallback to a single basic route if not using real data
-        analyzedRoutes = [{
-          id: 'demo-route-1',
-          name: 'Demo Route (API key not configured)',
-          segments: [],
-          totalDistance: 0,
-          estimatedTime: 0,
-          overallRisk: 50,
-          criticalPoints: [],
-          stops: stopsToUse,
-          waypoints: stopsToUse.map(s => s.address)
-        }];
-      }
+      
       
       const largeVehicleAnalysisData = generateLargeVehicleAnalysis(vehicle, analyzedRoutes);
 
@@ -294,12 +281,30 @@ function App() {
         isLoop: useLoop
       });
       
-      // Create mock routes using helper functions
-      const mockRoutes = createMockRoutes(origin, destination, vehicle, stopsToUse, useLoop);
+      const googleMapsService = GoogleMapsService.getInstance();
+      await googleMapsService.initialize();
+
+      const waypoints = stopsToUse.map(s => s.address);
+      const directionsResult = await googleMapsService.getRoutes({
+        origin: origin,
+        destination: destination,
+        waypoints: waypoints,
+      });
+
+      // Transform and analyze all routes returned by Google Maps
+      const analyzedRoutes = directionsResult.routes.map((gRoute, index) => {
+        const appRoute = transformGoogleRouteToAppRoute(gRoute, index, stopsToUse);
+        const { route: analyzed } = RouteAnalysisService.analyzeRouteRisk(appRoute, vehicle);
+        return analyzed;
+      });
+
+      // Sort routes by overall risk (safest first)
+      analyzedRoutes.sort((a, b) => a.overallRisk - b.overallRisk);
+
       const result = {
-        routes: mockRoutes,
-        recommendedRouteId: mockRoutes[0]?.id || '',
-        largeVehicleAnalysis: generateMockLargeVehicleAnalysis(vehicle, mockRoutes)
+        routes: analyzedRoutes,
+        recommendedRouteId: analyzedRoutes[0]?.id || '',
+        largeVehicleAnalysis: generateLargeVehicleAnalysis(vehicle, analyzedRoutes)
       };
 
       setRoutes(result.routes);
