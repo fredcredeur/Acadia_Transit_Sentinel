@@ -33,6 +33,21 @@ export interface RiskFactors {
   heightRestriction: number;
 }
 
+// Added this interface for the routeAnalysisService
+export interface RiskFactor {
+  name?: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high';
+  type: 'construction' | 'pedestrian' | 'traffic' | 'infrastructure' | 'emergency' | 'weather';
+  impactRadius?: number;
+  timeRestrictions?: {
+    startTime: string;
+    endTime: string;
+    days: string[];
+  };
+  heightRestriction?: number;
+}
+
 export interface RouteSegment {
   id: string;
   startLat: number;

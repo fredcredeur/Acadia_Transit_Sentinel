@@ -1,702 +1,266 @@
-// Enhanced RouteAnalysisService.ts - Fixed for consistent risk calculations
+// routeAnalysisService.ts - Fixed version matching your existing types
+import { Route, RouteSegment, RiskFactor, CriticalPoint, Vehicle, NamedRiskFactor } from '../types';
 
-import { GoogleMapsService } from './googleMapsService';
-import { EnhancedRiskCalculator } from './largeVehicleRouting';
-import { Route, Vehicle, StopLocation, RouteSegment as BaseRouteSegment } from '../types';
-
-// Extend RouteSegment to include intersectionAnalysis and largeVehicleRisk
-type RouteSegment = BaseRouteSegment & {
-  intersectionAnalysis?: any;
-  largeVehicleRisk?: number;
-};
-
-// Define NamedRiskFactor interface
-export interface NamedRiskFactor {
-  id: string;
-  name: string;
-  description: string;
-  severity: 'low' | 'medium' | 'high';
-  location: { lat: number; lng: number };
-}
-
-interface RouteAnalysisRequest {
-  origin: string;
-  destination: string;
-  vehicle: Vehicle;
-  stops?: StopLocation[];
-  avoidHighways?: boolean;
-  avoidTolls?: boolean;
-  prioritizeSafety?: boolean;
-  isLoop?: boolean;
-}
-
-interface RouteAnalysisResult {
-  routes: Route[];
-  recommendedRouteId: string;
-  largeVehicleAnalysis?: {
-    stopSignCount: number;
-    trafficLightCount: number;
-    safetyRecommendations: string[];
-    alternativeRouteSuggested: boolean;
+// Define risk factors and their locations extending your existing NamedRiskFactor
+interface ExtendedRiskFactor extends NamedRiskFactor {
+  type: 'construction' | 'pedestrian' | 'traffic' | 'infrastructure' | 'emergency' | 'weather';
+  impactRadius: number;
+  timeRestrictions?: {
+    startTime: string;
+    endTime: string;
+    days: string[];
   };
+  heightRestriction?: number;
 }
 
-export class EnhancedRouteAnalysisService {
-  private googleMapsService: GoogleMapsService;
-  private readonly LARGE_VEHICLE_THRESHOLD = 30; // feet
-  private readonly BUS_THRESHOLD = 35; // feet - buses need special routing
-  private readonly MIN_ROUTES = 3; // Minimum number of routes to generate
-
-  constructor() {
-    this.googleMapsService = GoogleMapsService.getInstance();
-  }
-
-  async analyzeRoutes(request: RouteAnalysisRequest): Promise<RouteAnalysisResult> {
-    const isLargeVehicle = request.vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
-    const isBus = request.vehicle.length >= this.BUS_THRESHOLD;
-    
-    console.log(`🚛 Analyzing routes for ${isBus ? 'BUS' : isLargeVehicle ? 'LARGE VEHICLE' : 'STANDARD VEHICLE'}: ${request.vehicle.length}ft`);
-    console.log(`🔄 Loop route: ${request.isLoop ? 'ENABLED' : 'DISABLED'}`);
-    
-    try {
-      // First, validate and geocode the addresses to ensure they're real
-      const originCoords = await this.validateAndGeocodeAddress(request.origin);
-      const destinationCoords = await this.validateAndGeocodeAddress(request.destination);
-      
-      console.log(`📍 Origin: ${originCoords.address}`);
-      console.log(`📍 Destination: ${destinationCoords.address}`);
-      
-      // Generate routes with different strategies based on vehicle type
-      let allRoutes: Route[] = [];
-      
-      if (isBus) {
-        // 🚌 BUS ROUTING: Prioritize traffic lights, avoid stop signs
-        allRoutes = await this.generateBusOptimizedRoutes(request, originCoords, destinationCoords);
-      } else if (isLargeVehicle) {
-        // 🚛 LARGE VEHICLE ROUTING: Safety-focused but not as strict as buses
-        allRoutes = await this.generateLargeVehicleRoutes(request, originCoords, destinationCoords);
-      } else {
-        // 🚗 STANDARD ROUTING: Fastest routes
-        allRoutes = await this.generateStandardRoutes(request, originCoords, destinationCoords);
-      }
-      
-      // Remove duplicates using sophisticated comparison
-      let uniqueRoutes = this.removeDuplicateRoutes(allRoutes);
-      
-      // Ensure we have minimum routes with meaningful differences
-      if (uniqueRoutes.length < this.MIN_ROUTES) {
-        const additionalRoutes = await this.generateMeaningfulVariations(request, uniqueRoutes, originCoords, destinationCoords);
-        uniqueRoutes = [...uniqueRoutes, ...additionalRoutes];
-      }
-      
-      // Apply consistent numbering starting from 1
-      uniqueRoutes = this.applyConsistentNumbering(uniqueRoutes);
-      
-      // 🔧 ENSURE CONSISTENT RISK FACTORS for all segments
-      uniqueRoutes = this.ensureConsistentRiskFactors(uniqueRoutes);
-      
-      // Enhance routes with intersection analysis
-      const enhancedRoutes = await this.enhanceRoutesWithIntersectionData(uniqueRoutes, request.vehicle);
-      
-      // Apply vehicle-specific risk scoring
-      const scoredRoutes = enhancedRoutes.map(route => ({
-        ...route,
-        largeVehicleRisk: this.calculateVehicleSpecificRisk(route, request.vehicle)
-      }));
-      
-      // Sort routes based on vehicle type priorities
-      const sortedRoutes = this.sortRoutesByVehicleType(scoredRoutes, request.vehicle);
-      
-      // Re-apply numbering after sorting
-      const finalRoutes = this.applyConsistentNumbering(sortedRoutes);
-      
-      // Generate analysis for large vehicles
-      const largeVehicleAnalysis = isLargeVehicle 
-        ? this.generateLargeVehicleAnalysis(finalRoutes, request.vehicle)
-        : undefined;
-      
-      console.log(`✅ Generated ${finalRoutes.length} unique routes with consistent risk calculations`);
-      
-      // Return the analysis result
-      return {
-        routes: finalRoutes,
-        recommendedRouteId: finalRoutes.length > 0 ? finalRoutes[0].id : '',
-        largeVehicleAnalysis
-      };
-    } catch (error) {
-      console.error('❌ Route analysis failed:', error);
-      throw new Error(`Failed to analyze routes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+// Mock risk factors for different areas
+const riskFactors: ExtendedRiskFactor[] = [
+  {
+    id: "rf_001",
+    name: "Downtown Construction Zone",
+    description: "Active construction with lane restrictions",
+    severity: 'high',
+    location: { lat: 44.3400, lng: -68.2700 },
+    type: 'construction',
+    impactRadius: 500,
+    timeRestrictions: {
+      startTime: '07:00',
+      endTime: '17:00',
+      days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
     }
+  },
+  {
+    id: "rf_002",
+    name: "School Zone - Bar Harbor Elementary",
+    description: "Heavy pedestrian traffic during school hours",
+    severity: 'medium',
+    location: { lat: 44.3355, lng: -68.2045 },
+    type: 'pedestrian',
+    impactRadius: 300,
+    timeRestrictions: {
+      startTime: '07:30',
+      endTime: '08:30',
+      days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+    }
+  },
+  {
+    id: "rf_003",
+    name: "Tourist Congestion Area",
+    description: "High traffic volume during peak season",
+    severity: 'medium',
+    location: { lat: 44.3386, lng: -68.2733 },
+    type: 'traffic',
+    impactRadius: 1000,
+    timeRestrictions: {
+      startTime: '09:00',
+      endTime: '18:00',
+      days: ['saturday', 'sunday']
+    }
+  },
+  {
+    id: "rf_004",
+    name: "Narrow Bridge",
+    description: "Single lane bridge with height restriction",
+    severity: 'high',
+    location: { lat: 44.3200, lng: -68.2900 },
+    type: 'infrastructure',
+    impactRadius: 100,
+    heightRestriction: 12.5
+  },
+  {
+    id: "rf_005",
+    name: "Emergency Services Area",
+    description: "Hospital and fire station emergency access",
+    severity: 'medium',
+    location: { lat: 44.3450, lng: -68.2600 },
+    type: 'emergency',
+    impactRadius: 400
   }
+];
 
-  // 🔧 NEW: Ensure all route segments have consistent, deterministic risk factors
-  private ensureConsistentRiskFactors(routes: Route[]): Route[] {
-    return routes.map(route => ({
+/**
+ * Enhanced route analysis service with comprehensive risk assessment
+ */
+export class RouteAnalysisService {
+  
+  /**
+   * Analyze a route and identify risk factors and critical points
+   */
+  static analyzeRouteRisk(route: Route, vehicle?: Vehicle): {
+    route: Route;
+    riskFactors: NamedRiskFactor[];
+    overallRiskScore: number;
+  } {
+    const affectedRiskFactors: NamedRiskFactor[] = [];
+    const criticalPoints: CriticalPoint[] = [];
+    let totalRiskScore = 0;
+    let segmentCount = 0;
+
+    // Analyze each segment for risk factors
+    route.segments.forEach((segment, index) => {
+      const segmentRisks = this.analyzeSegmentRisks(segment, vehicle);
+      
+      // Find nearby risk factors
+      const nearbyFactors = riskFactors.filter(factor => 
+        this.isPointNearSegment(factor.location, segment, factor.impactRadius)
+      );
+
+      nearbyFactors.forEach(factor => {
+        if (!affectedRiskFactors.find(existing => existing.id === factor.id)) {
+          affectedRiskFactors.push(factor);
+        }
+
+        // Create critical point if severity is high enough
+        if (factor.severity === 'high' || (factor.severity === 'medium' && segmentRisks.totalRisk > 60)) {
+          criticalPoints.push({
+            segmentId: segment.id,
+            position: index,
+            type: this.getCriticalPointType(factor.type),
+            riskLevel: factor.severity === 'high' ? 'critical' : 'high',
+            description: `${factor.name}: ${factor.description}`
+          });
+        }
+      });
+
+      totalRiskScore += segmentRisks.totalRisk;
+      segmentCount++;
+    });
+
+    const overallRiskScore = segmentCount > 0 ? totalRiskScore / segmentCount : 0;
+
+    // Update route with analysis results
+    const analyzedRoute: Route = {
       ...route,
+      criticalPoints,
+      overallRisk: overallRiskScore,
       segments: route.segments.map(segment => ({
         ...segment,
-        riskFactors: this.generateDeterministicRiskFactors(segment)
+        riskFactors: this.calculateSegmentRiskFactors(segment, vehicle),
+        riskScore: this.analyzeSegmentRisks(segment, vehicle).totalRisk
       }))
-    }));
-  }
+    };
 
-  // 🔧 DETERMINISTIC RISK FACTOR GENERATION
-  private generateDeterministicRiskFactors(segment: RouteSegment): typeof segment.riskFactors {
-    const streetName = segment.streetName.toLowerCase();
-    const description = segment.description.toLowerCase();
-    
-    // Create a unique seed based on segment characteristics
-    const seed = `${streetName}-${description}-${segment.startLat.toFixed(4)}-${segment.startLng.toFixed(4)}`;
-    
-    // Generate consistent values based on road type
-    let basePedestrianTraffic = 30;
-    let baseRoadWidth = 50;
-    let baseTrafficCongestion = 40;
-    let baseSpeedLimit = 35;
-    let baseHeightRestriction = 0;
-    
-    // Adjust base values based on road characteristics
-    if (streetName.includes('highway') || streetName.includes('interstate') || streetName.includes('freeway')) {
-      basePedestrianTraffic = 5;
-      baseRoadWidth = 20; // Lower number = wider road (less risk)
-      baseTrafficCongestion = 60;
-      baseSpeedLimit = 65;
-    } else if (streetName.includes('main') || streetName.includes('commercial') || streetName.includes('broadway')) {
-      basePedestrianTraffic = 70;
-      baseRoadWidth = 40;
-      baseTrafficCongestion = 65;
-      baseSpeedLimit = 30;
-    } else if (streetName.includes('residential') || streetName.includes('subdivision') || streetName.includes('lane')) {
-      basePedestrianTraffic = 45;
-      baseRoadWidth = 60; // Higher number = narrower road (more risk)
-      baseTrafficCongestion = 25;
-      baseSpeedLimit = 25;
-    } else if (streetName.includes('industrial') || streetName.includes('truck')) {
-      basePedestrianTraffic = 15;
-      baseRoadWidth = 25;
-      baseTrafficCongestion = 35;
-      baseSpeedLimit = 40;
-    }
-    
-    // Add school zone detection
-    if (description.includes('school')) {
-      basePedestrianTraffic += 30;
-      baseSpeedLimit = Math.min(baseSpeedLimit, 20);
-    }
-    
-    // Add bridge/height restriction detection
-    if (description.includes('bridge') || description.includes('overpass')) {
-      baseHeightRestriction = this.generateDeterministicValue(seed + '-height', 11, 14);
-    }
-    
-    // Generate small variations for realism, but keep them consistent
-    const variation = 10; // ±10% variation
-    
     return {
-      pedestrianTraffic: Math.max(0, Math.min(100, 
-        basePedestrianTraffic + this.generateDeterministicValue(seed + '-ped', -variation, variation)
-      )),
-      roadWidth: Math.max(0, Math.min(100, 
-        baseRoadWidth + this.generateDeterministicValue(seed + '-width', -variation, variation)
-      )),
-      trafficCongestion: Math.max(0, Math.min(100, 
-        baseTrafficCongestion + this.generateDeterministicValue(seed + '-traffic', -variation, variation)
-      )),
-      speedLimit: Math.max(15, Math.min(80, 
-        baseSpeedLimit + this.generateDeterministicValue(seed + '-speed', -5, 5)
-      )),
-      heightRestriction: baseHeightRestriction
+      route: analyzedRoute,
+      riskFactors: affectedRiskFactors,
+      overallRiskScore
     };
   }
 
-  // 🔧 DETERMINISTIC VALUE GENERATOR
-  private generateDeterministicValue(seed: string, min: number = 0, max: number = 100): number {
-    let hash = 0;
-    for (let i = 0; i < seed.length; i++) {
-      const char = seed.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
+  /**
+   * Analyze risks for a specific segment
+   */
+  private static analyzeSegmentRisks(segment: RouteSegment, vehicle?: Vehicle): {
+    totalRisk: number;
+    factors: string[];
+  } {
+    let totalRisk = 0;
+    const factors: string[] = [];
+
+    // Base risk from segment type
+    if (segment.streetName.toLowerCase().includes('main')) {
+      totalRisk += 20;
+      factors.push('main_street');
     }
-    
-    // Normalize to 0-1 range, then scale to min-max
-    const normalized = Math.abs(hash) / 2147483647; // Max 32-bit int
-    return min + (normalized * (max - min));
-  }
-
-  // 🚌 BUS-SPECIFIC ROUTING: Prioritizes arterial roads with traffic lights
-  private async generateBusOptimizedRoutes(
-    request: RouteAnalysisRequest,
-    _originCoords: { address: string; lat: number; lng: number },
-    _destinationCoords: { address: string; lat: number; lng: number }
-  ): Promise<Route[]> {
-    const routes: Route[] = [];
-    
-    console.log('🚌 Generating bus-optimized routes (prioritizing traffic lights)...');
-    console.log(`🔄 Loop route: ${request.isLoop ? 'ENABLED' : 'DISABLED'}`);
-
-    // Strategy 1: Major arterial roads (highways and main streets with traffic lights)
-    try {
-      const arterialRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: false, // Buses can use highways
-        avoidTolls: request.avoidTolls || false,
-        routeType: 'arterial'
-      });
-      routes.push(...arterialRoutes.map(route => ({
-        ...route,
-        name: 'Arterial Route (Traffic Lights)',
-        busOptimized: true,
-        preferredIntersectionType: 'traffic_light'
-      })));
-    } catch (error) {
-      console.warn('⚠️ Arterial routes failed:', error);
+    if (segment.streetName.toLowerCase().includes('school')) {
+      totalRisk += 30;
+      factors.push('school_zone');
     }
 
-    // Strategy 2: Highway-preferred route (no stop signs on highways)
-    try {
-      const highwayRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: false,
-        avoidTolls: false, // Allow tolls for highway access
-        routeType: 'highway'
-      });
-      routes.push(...highwayRoutes.map(route => ({
-        ...route,
-        name: 'Highway Route (No Stop Signs)',
-        busOptimized: true,
-        preferredIntersectionType: 'controlled_access'
-      })));
-    } catch (error) {
-      console.warn('⚠️ Highway routes failed:', error);
-    }
-
-    // Strategy 3: Alternative arterial route avoiding residential
-    try {
-      const alternativeRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: false,
-        avoidTolls: true,
-        routeType: 'alternative_arterial'
-      });
-      routes.push(...alternativeRoutes.map(route => ({
-        ...route,
-        name: 'Alternative Arterial Route',
-        busOptimized: true,
-        preferredIntersectionType: 'traffic_light'
-      })));
-    } catch (error) {
-      console.warn('⚠️ Alternative arterial routes failed:', error);
-    }
-
-    return routes;
-  }
-
-  // 🚛 LARGE VEHICLE ROUTING: Safety-focused but more flexible than buses
-  private async generateLargeVehicleRoutes(
-    request: RouteAnalysisRequest,
-    _originCoords: { address: string; lat: number; lng: number },
-    _destinationCoords: { address: string; lat: number; lng: number }
-  ): Promise<Route[]> {
-    const routes: Route[] = [];
-    
-    console.log('🚛 Generating large vehicle routes...');
-    console.log(`🔄 Loop route: ${request.isLoop ? 'ENABLED' : 'DISABLED'}`);
-
-    // Strategy 1: Truck-friendly route
-    try {
-      const truckRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: false,
-        avoidTolls: request.avoidTolls || false,
-        routeType: 'truck'
-      });
-      routes.push(...truckRoutes.map(route => ({
-        ...route,
-        name: 'Truck Route',
-        truckFriendly: true
-      })));
-    } catch (error) {
-      console.warn('⚠️ Truck routes failed:', error);
-    }
-
-    // Strategy 2: Balanced route
-    try {
-      const balancedRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: false,
-        avoidTolls: false,
-        routeType: 'balanced'
-      });
-      routes.push(...balancedRoutes.map(route => ({
-        ...route,
-        name: 'Balanced Route'
-      })));
-    } catch (error) {
-      console.warn('⚠️ Balanced routes failed:', error);
-    }
-
-    // Strategy 3: Local roads (if needed)
-    try {
-      const localRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: true,
-        avoidTolls: request.avoidTolls || false,
-        routeType: 'local'
-      });
-      routes.push(...localRoutes.map(route => ({
-        ...route,
-        name: 'Local Route'
-      })));
-    } catch (error) {
-      console.warn('⚠️ Local routes failed:', error);
-    }
-
-    return routes;
-  }
-
-  // 🚗 STANDARD ROUTING: Fastest and most efficient
-  private async generateStandardRoutes(
-    request: RouteAnalysisRequest,
-    _originCoords: { address: string; lat: number; lng: number },
-    _destinationCoords: { address: string; lat: number; lng: number }
-  ): Promise<Route[]> {
-    const routes: Route[] = [];
-    
-    console.log('🚗 Generating standard routes...');
-    console.log(`🔄 Loop route: ${request.isLoop ? 'ENABLED' : 'DISABLED'}`);
-
-    // Strategy 1: Fastest route
-    try {
-      const fastestRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: false,
-        avoidTolls: request.avoidTolls || false,
-        routeType: 'fastest'
-      });
-      routes.push(...fastestRoutes.map(route => ({
-        ...route,
-        name: 'Fastest Route'
-      })));
-    } catch (error) {
-      console.warn('⚠️ Fastest routes failed:', error);
-    }
-
-    // Strategy 2: Shortest route
-    try {
-      const shortestRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: true,
-        avoidTolls: request.avoidTolls || false,
-        routeType: 'shortest'
-      });
-      routes.push(...shortestRoutes.map(route => ({
-        ...route,
-        name: 'Shortest Route'
-      })));
-    } catch (error) {
-      console.warn('⚠️ Shortest routes failed:', error);
-    }
-
-    // Strategy 3: Alternative route
-    try {
-      const alternativeRoutes = await this.getGoogleMapsRoutes(request, {
-        avoidHighways: false,
-        avoidTolls: true,
-        routeType: 'alternative'
-      });
-      routes.push(...alternativeRoutes.map(route => ({
-        ...route,
-        name: 'Alternative Route'
-      })));
-    } catch (error) {
-      console.warn('⚠️ Alternative routes failed:', error);
-    }
-
-    return routes;
-  }
-
-  private async validateAndGeocodeAddress(address: string): Promise<{
-    address: string;
-    lat: number;
-    lng: number;
-  }> {
-    try {
-      // Check if it's already coordinates
-      const coordPattern = /^[-+]?\d*\.?\d+,\s*[-+]?\d*\.?\d+$/;
-      if (coordPattern.test(address.trim())) {
-        const [latStr, lngStr] = address.split(',');
-        const lat = parseFloat(latStr.trim());
-        const lng = parseFloat(lngStr.trim());
-        return { address: address.trim(), lat, lng };
+    // Vehicle-specific risks
+    if (vehicle) {
+      if (vehicle.height > 12 && segment.description.toLowerCase().includes('bridge')) {
+        totalRisk += 40;
+        factors.push('height_restriction');
       }
-
-      // Geocode the address
-      const results = await this.googleMapsService.geocodeAddress(address);
-      if (results.length > 0) {
-        const result = results[0];
-        const location = result.geometry.location;
-        return {
-          address: result.formatted_address,
-          lat: location.lat(),
-          lng: location.lng()
-        };
-      } else {
-        throw new Error(`Could not find location for address: ${address}`);
-      }
-    } catch (error) {
-      console.error(`Failed to geocode address "${address}":`, error);
-      throw new Error(`Invalid address: ${address}. Please enter a valid address.`);
-    }
-  }
-
-  private async getGoogleMapsRoutes(
-    request: RouteAnalysisRequest,
-    options: { avoidHighways: boolean; avoidTolls: boolean; routeType: string }
-  ): Promise<Route[]> {
-    const routes: Route[] = [];
-
-    // Handle loop routes by setting destination to origin if isLoop is true
-    const finalDestination = request.isLoop ? request.origin : request.destination;
-    
-    // For loop routes, we need to ensure all stops are visited before returning to origin
-    let finalStops = request.stops;
-    
-    // If it's a loop route, we don't need to add the origin as a stop since it's already the destination
-    if (request.isLoop && finalStops) {
-      // Remove any existing loop-return stops
-      finalStops = finalStops.filter(stop => stop.id !== 'loop-return');
-    }
-
-    const routeOptions = {
-      origin: request.origin,
-      destination: finalDestination,
-      waypoints: finalStops?.map(stop => stop.address),
-      travelMode: google.maps.TravelMode.DRIVING,
-      avoidHighways: options.avoidHighways,
-      avoidTolls: options.avoidTolls,
-      departureTime: new Date()
-    };
-
-    console.log(`🔄 ${request.isLoop ? 'Loop route' : 'Standard route'} request:`, {
-      origin: request.origin,
-      destination: finalDestination,
-      waypoints: finalStops?.length || 0
-    });
-
-    const directionsResult = await this.googleMapsService.getRoutes(routeOptions);
-    
-    // Take multiple routes if available, but limit to avoid too many similar routes
-    const routesToProcess = directionsResult.routes.slice(0, 2); // Max 2 routes per strategy
-    
-    routesToProcess.forEach((googleRoute, index) => {
-      const route = this.convertGoogleRouteToRoute(googleRoute, index, request, options.routeType);
-      routes.push(route);
-    });
-
-    return routes;
-  }
-
-  // Enhanced duplicate removal that considers route characteristics
-  private removeDuplicateRoutes(routes: Route[]): Route[] {
-    const uniqueRoutes: Route[] = [];
-    const SIMILARITY_THRESHOLD = 0.15; // 15% similarity threshold
-    
-    routes.forEach(route => {
-      const isDuplicate = uniqueRoutes.some(existingRoute => {
-        // Check distance similarity
-        const distanceDiff = Math.abs(route.totalDistance - existingRoute.totalDistance) / Math.max(route.totalDistance, existingRoute.totalDistance);
-        
-        // Check time similarity
-        const timeDiff = Math.abs(route.estimatedTime - existingRoute.estimatedTime) / Math.max(route.estimatedTime, existingRoute.estimatedTime);
-        
-        // Check if routes are too similar
-        return distanceDiff < SIMILARITY_THRESHOLD && timeDiff < SIMILARITY_THRESHOLD;
-      });
-      
-      if (!isDuplicate) {
-        uniqueRoutes.push(route);
-      }
-    });
-    
-    console.log(`🔍 Removed ${routes.length - uniqueRoutes.length} duplicate routes`);
-    return uniqueRoutes;
-  }
-
-  // Generate meaningful variations that are actually different
-  private async generateMeaningfulVariations(
-    request: RouteAnalysisRequest,
-    existingRoutes: Route[],
-    originCoords: { address: string; lat: number; lng: number },
-    destinationCoords: { address: string; lat: number; lng: number }
-  ): Promise<Route[]> {
-    const variations: Route[] = [];
-    const neededRoutes = this.MIN_ROUTES - existingRoutes.length;
-    
-    console.log(`🔄 Generating ${neededRoutes} meaningful route variations...`);
-
-    if (existingRoutes.length === 0) {
-      // Create a basic fallback route
-      variations.push(await this.createRealisticFallbackRoute(request, originCoords, destinationCoords));
-    } else {
-      // Create variations based on the best existing route
-      const baseRoute = existingRoutes[0];
-      
-      for (let i = 0; i < neededRoutes; i++) {
-        const variation = this.createMeaningfulVariation(baseRoute, i + 1, originCoords, destinationCoords, request.vehicle);
-        variations.push(variation);
+      if (vehicle.length > 40 && segment.description.toLowerCase().includes('narrow')) {
+        totalRisk += 35;
+        factors.push('narrow_road');
       }
     }
 
-    return variations;
-  }
+    // Time-based risks (simplified)
+    const currentHour = new Date().getHours();
+    if (currentHour >= 7 && currentHour <= 9) {
+      totalRisk += 15; // Morning rush
+      factors.push('rush_hour');
+    }
+    if (currentHour >= 17 && currentHour <= 19) {
+      totalRisk += 15; // Evening rush
+      factors.push('rush_hour');
+    }
 
-  private createMeaningfulVariation(
-    baseRoute: Route,
-    variationIndex: number,
-    _originCoords: { address: string; lat: number; lng: number },
-    _destinationCoords: { address: string; lat: number; lng: number },
-    vehicle: Vehicle
-  ): Route {
-    const isBus = vehicle.length >= this.BUS_THRESHOLD;
-    
-    // Create meaningful variations with different characteristics
-    const variations = [
-      {
-        name: isBus ? 'Local Arterial Route' : 'Scenic Route',
-        distanceMultiplier: 1.2,
-        timeMultiplier: 1.15,
-        riskAdjustment: -10 // Safer but longer
-      },
-      {
-        name: isBus ? 'Express Route' : 'Highway Route', 
-        distanceMultiplier: 1.1,
-        timeMultiplier: 0.9,
-        riskAdjustment: 5 // Faster but slightly riskier
-      },
-      {
-        name: isBus ? 'Residential Bypass' : 'Back Roads Route',
-        distanceMultiplier: 1.3,
-        timeMultiplier: 1.25,
-        riskAdjustment: 15 // Longer and more complex
-      }
-    ];
-    
-    const variation = variations[(variationIndex - 1) % variations.length];
-    
     return {
-      id: `variation-${variationIndex}`,
-      name: variation.name,
-      segments: [{
-        id: `variation-segment-${variationIndex}`,
-        streetName: `${variation.name} Path`,
-        description: `${variation.name} with different routing characteristics`,
-        startLat: _originCoords.lat,
-        startLng: _originCoords.lng,
-        endLat: _destinationCoords.lat,
-        endLng: _destinationCoords.lng,
-        riskFactors: {
-          pedestrianTraffic: Math.max(10, Math.min(90, 40 + variation.riskAdjustment)),
-          roadWidth: Math.max(20, Math.min(80, 50 - variation.riskAdjustment)),
-          trafficCongestion: Math.max(10, Math.min(90, 45 + (variation.riskAdjustment / 2))),
-          speedLimit: 35,
-          heightRestriction: 0
-        },
-        riskScore: 0
-      }],
-      totalDistance: baseRoute.totalDistance * variation.distanceMultiplier,
-      estimatedTime: baseRoute.estimatedTime * variation.timeMultiplier,
-      criticalPoints: [],
-      stops: baseRoute.stops,
-      overallRisk: 0 // Added to satisfy Route type
+      totalRisk: Math.min(totalRisk, 100),
+      factors
     };
   }
 
-  private async createRealisticFallbackRoute(
-    request: RouteAnalysisRequest,
-    _originCoords: { address: string; lat: number; lng: number },
-    _destinationCoords: { address: string; lat: number; lng: number }
-  ): Promise<Route> {
-    console.log('🆘 Creating realistic fallback route');
+  /**
+   * Calculate risk factors for a segment matching your RiskFactors interface
+   */
+  private static calculateSegmentRiskFactors(segment: RouteSegment, vehicle?: Vehicle) {
+    const riskFactors = {
+      trafficCongestion: Math.random() * 80, // Mock data
+      pedestrianTraffic: Math.random() * 60,
+      roadWidth: Math.random() * 80,
+      speedLimit: 25 + Math.random() * 30, // 25-55 mph
+      heightRestriction: 0
+    };
+
+    // Add height restrictions for bridges
+    if (segment.description.toLowerCase().includes('bridge')) {
+      riskFactors.heightRestriction = 12.5 + Math.random() * 3;
+    }
+
+    // Adjust for vehicle type
+    if (vehicle) {
+      if (vehicle.length > 40) {
+        riskFactors.roadWidth += 20; // Narrow roads are riskier for large vehicles
+      }
+      if (vehicle.height > 12) {
+        // More concern about height restrictions
+        if (riskFactors.heightRestriction > 0 && riskFactors.heightRestriction < vehicle.height + 1) {
+          riskFactors.roadWidth = Math.max(riskFactors.roadWidth, 80);
+        }
+      }
+    }
+
+    return riskFactors;
+  }
+
+  /**
+   * Check if a point is near a route segment
+   */
+  private static isPointNearSegment(
+    point: { lat: number; lng: number },
+    segment: RouteSegment,
+    radiusMeters: number
+  ): boolean {
+    // Simple distance calculation (not accounting for Earth's curvature)
+    const segmentMidLat = (segment.startLat + segment.endLat) / 2;
+    const segmentMidLng = (segment.startLng + segment.endLng) / 2;
     
     const distance = this.calculateDistance(
-      _originCoords.lat, _originCoords.lng,
-      _destinationCoords.lat, _destinationCoords.lng
-    );
-
-    const estimatedTime = (distance / 30) * 60; // 30 mph average
-
-    return {
-      id: 'fallback-route',
-      name: 'Direct Route',
-      segments: [{
-        id: 'fallback-segment',
-        streetName: 'Direct Path',
-description: `Direct route from ${_originCoords.address} to ${_
-
-[Response interrupted by a tool use result. Only one tool may be used at a time and should be placed at the end of the message.]
-        riskFactors: {
-          pedestrianTraffic: 50,
-          roadWidth: 35,
-          trafficCongestion: 40,
-          speedLimit: 35,
-          heightRestriction: 0
-        },
-        riskScore: 0 // Added risk score field
-      }],
-      totalDistance: distance,
-        startLat: originCoords.lat,
-        startLng: originCoords.lng,
-        endLat: destinationCoords.lat,
-        endLng: destinationCoords.lng,
-        riskFactors: {
-          pedestrianTraffic: Math.max(10, Math.min(90, 40 + variation.riskAdjustment)),
-          roadWidth: Math.max(20, Math.min(80, 50 - variation.riskAdjustment)),
-          trafficCongestion: Math.max(10, Math.min(90, 45 + (variation.riskAdjustment / 2))),
-          speedLimit: 35,
-          heightRestriction: 0
-        },
-        riskScore: 0
-      }],
-      totalDistance: baseRoute.totalDistance * variation.distanceMultiplier,
-      estimatedTime: baseRoute.estimatedTime * variation.timeMultiplier,
-      criticalPoints: [],
-      stops: baseRoute.stops,
-      overallRisk: 0 // Added to satisfy Route type
-    };
-  }
-
-  private async createRealisticFallbackRoute(
-    request: RouteAnalysisRequest,
-    _originCoords: { address: string; lat: number; lng: number },
-    _destinationCoords: { address: string; lat: number; lng: number }
-  ): Promise<Route> {
-    console.log('🆘 Creating realistic fallback route');
-    
-    const distance = this.calculateDistance(
-      _originCoords.lat, _originCoords.lng,
-      _destinationCoords.lat, _destinationCoords.lng
+      point.lat,
+      point.lng,
+      segmentMidLat,
+      segmentMidLng
     );
     
-    const estimatedTime = (distance / 30) * 60; // 30 mph average
-    
-    return {
-      id: 'fallback-route',
-      name: 'Direct Route',
-      segments: [{
-        id: 'fallback-segment',
-streetName: 'Direct Path',
-        description: `${description}
-        riskFactors: {
-          pedestrianTraffic: 35,
-          roadWidth: 40,
-          trafficCongestion: 45,
-          speedLimit: 35,
-          heightRestriction: 0
-        },
-        riskScore: 0
-      }],
-      totalDistance: distance,
-      estimatedTime,
-      criticalPoints: [],
-      stops: request.stops || [],
-      overallRisk: 0
-    };
+    return distance <= radiusMeters;
   }
 
-  private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-    const R = 3959; // Earth's radius in miles
+  /**
+   * Calculate distance between two points in meters
+   */
+  private static calculateDistance(
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number
+  ): number {
+    const R = 6371000; // Earth's radius in meters
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
     const a = 
@@ -707,465 +271,135 @@ streetName: 'Direct Path',
     return R * c;
   }
 
-  private applyConsistentNumbering(routes: Route[]): Route[] {
-    return routes.map((route, index) => ({
-      ...route,
-      id: `route-${index + 1}`,
-      name: route.name || `Route ${index + 1}`
-    }));
-  }
-
-  private calculateVehicleSpecificRisk(route: Route, vehicle: Vehicle): number {
-    const isLargeVehicle = vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
-    const isBus = vehicle.length >= this.BUS_THRESHOLD;
-    
-    if (isBus) {
-      return EnhancedRiskCalculator.calculateLargeVehicleRisk(route, vehicle);
-    } else if (isLargeVehicle) {
-      return EnhancedRiskCalculator.calculateLargeVehicleRisk(route, vehicle);
-    } else {
-      return this.calculateStandardRisk(route, vehicle);
+  /**
+   * Convert risk factor type to critical point type
+   */
+  private static getCriticalPointType(riskType: string): CriticalPoint['type'] {
+    switch (riskType) {
+      case 'construction':
+        return 'narrow_road';
+      case 'infrastructure':
+        return 'bridge';
+      case 'pedestrian':
+        return 'intersection';
+      case 'traffic':
+        return 'intersection';
+      case 'emergency':
+        return 'intersection';
+      default:
+        return 'intersection';
     }
   }
 
-  private sortRoutesByVehicleType(routes: Route[], vehicle: Vehicle): Route[] {
-    const isBus = vehicle.length >= this.BUS_THRESHOLD;
-    const isLargeVehicle = vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
+  /**
+   * Get all available risk factors
+   */
+  static getAllRiskFactors(): NamedRiskFactor[] {
+    return [...riskFactors];
+  }
+
+  /**
+   * Get risk factors affecting a specific route
+   */
+  static getRiskFactorsForRoute(route: Route): NamedRiskFactor[] {
+    const affectedFactors: NamedRiskFactor[] = [];
     
-    return routes.sort((a, b) => {
-      if (isBus) {
-        // For buses: Prioritize safety (low risk) over speed
-        const aRisk = (a as any).largeVehicleRisk || 0;
-        const bRisk = (b as any).largeVehicleRisk || 0;
-        
-        // Strong preference for routes with traffic lights
-        const aTrafficLightBonus = (a as any).busOptimized ? -20 : 0;
-        const bTrafficLightBonus = (b as any).busOptimized ? -20 : 0;
-        
-        const aScore = aRisk + aTrafficLightBonus;
-        const bScore = bRisk + bTrafficLightBonus;
-        
-        if (Math.abs(aScore - bScore) > 5) {
-          return aScore - bScore; // Lower score (safer) wins
-        }
-        
-        return a.estimatedTime - b.estimatedTime; // Then by time
-      } else if (isLargeVehicle) {
-        // For large vehicles: Balance safety and efficiency
-        const aRisk = (a as any).largeVehicleRisk || 0;
-        const bRisk = (b as any).largeVehicleRisk || 0;
-        
-        if (Math.abs(aRisk - bRisk) > 10) {
-          return aRisk - bRisk;
-        }
-        
-        return a.estimatedTime - b.estimatedTime;
-      } else {
-        // For standard vehicles: Prioritize speed
-        return a.estimatedTime - b.estimatedTime;
-      }
-    });
-  }
-
-  private async enhanceRoutesWithIntersectionData(routes: Route[], vehicle: Vehicle): Promise<Route[]> {
-    const isBus = vehicle.length >= this.BUS_THRESHOLD;
-    
-    return Promise.all(routes.map(async route => {
-      try {
-        const enhancedSegments = await Promise.all(route.segments.map(async segment => {
-          const intersectionAnalysis = await this.analyzeSegmentIntersections(segment, vehicle, route);
-          return {
-            ...segment,
-            intersectionAnalysis,
-            largeVehicleRisk: this.calculateSegmentRiskForLargeVehicle(segment, vehicle, intersectionAnalysis),
-            riskScore: this.calculateSegmentRiskForLargeVehicle(segment, vehicle, intersectionAnalysis) // Assign calculated risk to segment.riskScore
-          };
-        }));
-
-        const intersectionSummary = this.generateIntersectionSummary(enhancedSegments, isBus);
-
-        return {
-          ...route,
-          segments: enhancedSegments,
-          intersectionSummary
-        };
-      } catch (error) {
-        return route;
-      }
-    }));
-  }
-
-  private async analyzeSegmentIntersections(segment: RouteSegment, vehicle: Vehicle, route: Route): Promise<any> {
-    const isBus = vehicle.length >= this.BUS_THRESHOLD;
-    const routeName = route.name?.toLowerCase() || '';
-    
-    // 🔧 DETERMINISTIC INTERSECTION ANALYSIS
-    const seed = `${segment.streetName}-${segment.startLat.toFixed(4)}-${segment.startLng.toFixed(4)}-${routeName}`;
-    
-    const mockAnalysis = {
-      stopSignCount: 0,
-      trafficLightCount: 0,
-      roundaboutCount: 0,
-      uncontrolledCount: 0,
-      schoolZoneIntersections: 0,
-      highTrafficIntersections: 0
-    };
-
-    // Bus-optimized routes should have more traffic lights
-    if (isBus && ((route as any).busOptimized || routeName.includes('arterial') || routeName.includes('highway'))) {
-      mockAnalysis.trafficLightCount = Math.floor(this.generateDeterministicValue(seed + '-tl', 2, 5));
-      mockAnalysis.stopSignCount = Math.floor(this.generateDeterministicValue(seed + '-ss', 0, 1));
-    }
-    // Highway routes have fewer intersections overall
-    else if (routeName.includes('highway') || routeName.includes('express')) {
-      mockAnalysis.trafficLightCount = Math.floor(this.generateDeterministicValue(seed + '-tl', 1, 2));
-      mockAnalysis.stopSignCount = 0; // No stop signs on highways
-    }
-    // Local/residential routes have more stop signs
-    else if (routeName.includes('local') || routeName.includes('residential') || segment.description?.toLowerCase().includes('residential')) {
-      mockAnalysis.stopSignCount = Math.floor(this.generateDeterministicValue(seed + '-ss', 2, 5));
-      mockAnalysis.trafficLightCount = Math.floor(this.generateDeterministicValue(seed + '-tl', 0, 1));
-    }
-    // Balanced routes
-    else {
-      mockAnalysis.stopSignCount = Math.floor(this.generateDeterministicValue(seed + '-ss', 1, 3));
-      mockAnalysis.trafficLightCount = Math.floor(this.generateDeterministicValue(seed + '-tl', 1, 3));
-    }
-
-    return mockAnalysis;
-  }
-
-  private calculateSegmentRiskForLargeVehicle(
-    segment: RouteSegment, 
-    vehicle: Vehicle, 
-    intersectionAnalysis: any
-  ): number {
-    const isLargeVehicle = vehicle.length >= this.LARGE_VEHICLE_THRESHOLD;
-    const isBus = vehicle.length >= this.BUS_THRESHOLD;
-    let risk = 0;
-
-    if (!isLargeVehicle) {
-      return this.calculateStandardSegmentRisk(segment, vehicle);
-    }
-
-    // Heavy penalty for stop signs, especially for buses
-    const stopSignPenalty = isBus ? 45 : 35;
-    risk += intersectionAnalysis.stopSignCount * stopSignPenalty;
-    
-    // Light penalty for traffic lights (they're actually preferred for large vehicles)
-    risk += intersectionAnalysis.trafficLightCount * 5;
-    
-    // Heavy penalty for roundabouts and uncontrolled intersections
-    risk += intersectionAnalysis.roundaboutCount * 60;
-    risk += intersectionAnalysis.uncontrolledCount * 70;
-    risk += intersectionAnalysis.schoolZoneIntersections * 30;
-    risk += intersectionAnalysis.highTrafficIntersections * 25;
-
-    return Math.min(risk, 100);
-  }
-
-  private generateIntersectionSummary(segments: RouteSegment[], isBus: boolean = false): any {
-    const summary = {
-      totalStopSigns: 0,
-      totalTrafficLights: 0,
-      totalRoundabouts: 0,
-      totalUncontrolled: 0,
-      schoolZoneIntersections: 0,
-      highestRiskSegment: null as RouteSegment | null,
-      averageSegmentRisk: 0,
-      stopSignToTrafficLightRatio: 0
-    };
-
-    let totalRisk = 0;
-    let maxRisk = 0;
-
-    segments.forEach(segment => {
-      if (segment.intersectionAnalysis) {
-        summary.totalStopSigns += segment.intersectionAnalysis.stopSignCount || 0;
-        summary.totalTrafficLights += segment.intersectionAnalysis.trafficLightCount || 0;
-        summary.totalRoundabouts += segment.intersectionAnalysis.roundaboutCount || 0;
-        summary.totalUncontrolled += segment.intersectionAnalysis.uncontrolledCount || 0;
-        summary.schoolZoneIntersections += segment.intersectionAnalysis.schoolZoneIntersections || 0;
-      }
-
-      const segmentRisk = (segment as any).largeVehicleRisk || 0;
-      totalRisk += segmentRisk;
-
-      if (segmentRisk > maxRisk) {
-        maxRisk = segmentRisk;
-        summary.highestRiskSegment = segment;
-      }
-    });
-
-    summary.averageSegmentRisk = segments.length > 0 ? totalRisk / segments.length : 0;
-    
-    // Calculate stop sign to traffic light ratio
-    const totalIntersections = summary.totalStopSigns + summary.totalTrafficLights;
-    summary.stopSignToTrafficLightRatio = totalIntersections > 0 ? summary.totalStopSigns / totalIntersections : 0;
-
-    return summary;
-  }
-
-  private generateLargeVehicleAnalysis(routes: Route[], vehicle: Vehicle): any {
-    const bestRoute = routes[0];
-    const intersectionSummary = (bestRoute as any).intersectionSummary || {};
-    const isBus = vehicle.length >= this.BUS_THRESHOLD;
-    
-    const analysis = {
-      stopSignCount: intersectionSummary.totalStopSigns || 0,
-      trafficLightCount: intersectionSummary.totalTrafficLights || 0,
-      safetyRecommendations: [] as string[],
-      alternativeRouteSuggested: false
-    };
-
-    // Generate vehicle-specific recommendations
-    if (isBus) {
-      analysis.safetyRecommendations = [
-        `🚌 Bus Route Analysis: ${analysis.stopSignCount} stop signs, ${analysis.trafficLightCount} traffic lights`,
-        `🚦 Traffic lights are preferred for bus operations - they provide controlled, predictable stops`,
-        `🛑 Stop signs require complete stops and can delay schedules - minimize when possible`,
-        `⚠️ Allow extra time for passenger boarding/alighting at stops`,
-        `🔄 Plan wide turns - 40ft buses need 42ft turning radius`
-      ];
-
-      // Bus-specific alternative route suggestion
-      if (analysis.stopSignCount > 3) {
-        analysis.alternativeRouteSuggested = true;
-        analysis.safetyRecommendations.unshift(
-          `🚨 HIGH STOP SIGN COUNT: ${analysis.stopSignCount} stop signs detected. For bus operations, consider selecting a route with more traffic lights for better schedule reliability and passenger comfort.`
-        );
-      }
-
-      const stopSignRatio = intersectionSummary.stopSignToTrafficLightRatio || 0;
-      if (stopSignRatio > 0.5) {
-        analysis.safetyRecommendations.push(
-          `📊 Route is ${Math.round(stopSignRatio * 100)}% stop signs - look for arterial roads with traffic signals`
-        );
-      }
-    } else {
-      analysis.safetyRecommendations = EnhancedRiskCalculator.getLargeVehicleSafetyRecommendations(bestRoute, vehicle);
-      
-      if (analysis.stopSignCount > 5) {
-        analysis.alternativeRouteSuggested = true;
-        analysis.safetyRecommendations.unshift(
-          `⚠️ High stop sign count: ${analysis.stopSignCount} stop signs. Consider alternative routing for large vehicle safety.`
-        );
-      }
-    }
-
-    return analysis;
-  }
-
-  private calculateStandardRisk(route: Route, vehicle: Vehicle): number {
-    return 30;
-  }
-
-  private calculateStandardSegmentRisk(segment: RouteSegment, vehicle: Vehicle): number {
-    return 25;
-  }
-
-  private convertGoogleRouteToRoute(
-    googleRoute: google.maps.DirectionsRoute, 
-    index: number, 
-    request: RouteAnalysisRequest,
-    routeType: string
-  ): Route {
-    const route: Route = {
-      id: `temp-route-${index}`,
-      name: `${routeType} Route ${index + 1}`,
-      segments: [],
-      totalDistance: 0,
-      estimatedTime: 0,
-      criticalPoints: [],
-      stops: request.stops,
-      overallRisk: 0
-    };
-
-    googleRoute.legs.forEach(leg => {
-      route.totalDistance += leg.distance?.value ? leg.distance.value * 0.000621371 : 0;
-      route.estimatedTime += leg.duration?.value ? leg.duration.value / 60 : 0;
-    });
-
-    googleRoute.legs.forEach((leg, legIndex) => {
-      leg.steps.forEach((step, stepIndex) => {
-        const segment: RouteSegment = {
-          id: `segment-${legIndex}-${stepIndex}`,
-          streetName: step.instructions?.replace(/<[^>]*>/g, '') || 'Unknown Street',
-          description: step.instructions?.replace(/<[^>]*>/g, '') || '',
-          startLat: step.start_location.lat(),
-          startLng: step.start_location.lng(),
-          endLat: step.end_location.lat(),
-          endLng: step.end_location.lng(),
-          riskFactors: {
-            pedestrianTraffic: 50, // Will be replaced by deterministic values
-            roadWidth: 50,
-            trafficCongestion: 50,
-            speedLimit: 35,
-          heightRestriction: 0
-        },
-        riskScore: 0 // Added default riskScore
-      };
-      route.segments.push(segment);
-    });
-    });
-
-    return route;
-  }
-}
-
-// (Removed duplicate import - moved to top of file)
-
-// Mock risk factors in the Acadia area
-const RISK_FACTORS: NamedRiskFactor[] = [
-  {
-    id: 'risk-1',
-    name: 'Steep Road',
-    description: 'Cadillac Mountain Road has steep grades and sharp turns',
-    severity: 'high',
-    location: { lat: 44.3431, lng: -68.2261 }
-  },
-  {
-    id: 'risk-2',
-    name: 'Congestion',
-    description: 'Heavy tourist traffic during peak hours',
-    severity: 'medium',
-    location: { lat: 44.3876, lng: -68.2039 }
-  },
-  {
-    id: 'risk-3',
-    name: 'Wildlife Crossing',
-    description: 'Frequent deer crossings reported in this area',
-    severity: 'medium',
-    location: { lat: 44.3097, lng: -68.1839 }
-  },
-  {
-    id: 'risk-4',
-    name: 'Poor Road Condition',
-    description: 'Road surface damaged from winter weather',
-    severity: 'low',
-    location: { lat: 44.3615, lng: -68.2074 }
-  },
-  {
-    id: 'risk-5',
-    name: 'Blind Corner',
-    description: 'Limited visibility around curve',
-    severity: 'high',
-    location: { lat: 44.3240, lng: -68.2511 }
-  }
-];
-
-// Calculate risk score for a route based on proximity to known risk factors
-export function analyzeRouteRisk(route: Route): { route: Route, riskFactors: NamedRiskFactor[] } {
-  const relevantRiskFactors: NamedRiskFactor[] = [];
-  let totalRiskScore = 0;
-  
-  // Check each segment in the route against known risk factors
-  route.segments.forEach((segment, index) => {
-    if (index === 0) return; // Skip starting segment
-
-    const prevSegment = route.segments[index - 1];
-
-    // Check each risk factor
-    RISK_FACTORS.forEach(factor => {
-      // Calculate if this route segment passes near the risk factor
-      const isNearRisk = isPointNearLineSegment(
-        factor.location,
-        { lat: prevSegment.endLat, lng: prevSegment.endLng },
-        { lat: segment.startLat, lng: segment.startLng },
-        0.01 // ~1km threshold
+    route.segments.forEach(segment => {
+      const nearbyFactors = riskFactors.filter(factor => 
+        this.isPointNearSegment(factor.location, segment, factor.impactRadius)
       );
-
-      if (isNearRisk) {
-        relevantRiskFactors.push(factor);
-
-        // Add to risk score based on severity
-        switch (factor.severity) {
-          case 'low':
-            totalRiskScore += 10;
-            break;
-          case 'medium':
-            totalRiskScore += 25;
-            break;
-          case 'high':
-            totalRiskScore += 40;
-            break;
+      
+      nearbyFactors.forEach(factor => {
+        if (!affectedFactors.find(existing => existing.id === factor.id)) {
+          affectedFactors.push(factor);
         }
-      }
+      });
     });
-  });
-  
-  // Normalize risk score to 0-100 range
-  const normalizedScore = Math.min(100, totalRiskScore);
-  
-  // Create a new route with the risk score
-  const analyzedRoute: Route = {
-    ...route,
-    overallRisk: normalizedScore
-  };
-  
-  return {
-    route: analyzedRoute,
-    riskFactors: relevantRiskFactors
-  };
-}
-
-// Helper function to check if a point is near a line segment
-function isPointNearLineSegment(
-  point: { lat: number, lng: number },
-  lineStart: { lat: number, lng: number },
-  lineEnd: { lat: number, lng: number },
-  threshold: number
-): boolean {
-  // Calculate distance from point to line segment
-  const distance = distanceToLineSegment(
-    point.lat, point.lng,
-    lineStart.lat, lineStart.lng,
-    lineEnd.lat, lineEnd.lng
-  );
-  
-  return distance < threshold;
-}
-
-// Calculate distance from point to line segment
-function distanceToLineSegment(
-  px: number, py: number,
-  x1: number, y1: number,
-  x2: number, y2: number
-): number {
-  const A = px - x1;
-  const B = py - y1;
-  const C = x2 - x1;
-  const D = y2 - y1;
-  
-  const dot = A * C + B * D;
-  const lenSq = C * C + D * D;
-  let param = -1;
-  
-  if (lenSq !== 0) {
-    param = dot / lenSq;
+    
+    return affectedFactors;
   }
-  
-  let xx, yy;
-  
-  if (param < 0) {
-    xx = x1;
-    yy = y1;
-  } else if (param > 1) {
-    xx = x2;
-    yy = y2;
-  } else {
-    xx = x1 + param * C;
-    yy = y1 + param * D;
+
+  /**
+   * Calculate risk score for current time and conditions
+   */
+  static calculateTimeBasedRisk(): number {
+    const now = new Date();
+    const hour = now.getHours();
+    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    
+    let riskMultiplier = 1.0;
+    
+    // Rush hour multiplier
+    if ((hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19)) {
+      riskMultiplier += 0.3;
+    }
+    
+    // Weekend tourist traffic
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      if (hour >= 10 && hour <= 16) {
+        riskMultiplier += 0.2;
+      }
+    }
+    
+    // Night time reduced risk
+    if (hour >= 22 || hour <= 5) {
+      riskMultiplier -= 0.2;
+    }
+    
+    return Math.max(0.5, Math.min(2.0, riskMultiplier));
   }
-  
-  const dx = px - xx;
-  const dy = py - yy;
-  
-  return Math.sqrt(dx * dx + dy * dy);
+
+  /**
+   * Generate safety recommendations based on route analysis
+   */
+  static generateSafetyRecommendations(
+    route: Route,
+    vehicle?: Vehicle
+  ): string[] {
+    const recommendations: string[] = [];
+    const timeRisk = this.calculateTimeBasedRisk();
+    
+    // Time-based recommendations
+    if (timeRisk > 1.2) {
+      recommendations.push("Consider traveling during off-peak hours to reduce traffic risk");
+    }
+    
+    // Critical points recommendations
+    if (route.criticalPoints && route.criticalPoints.length > 0) {
+      recommendations.push(`Route contains ${route.criticalPoints.length} critical point(s) - exercise extra caution`);
+      
+      const bridgePoints = route.criticalPoints.filter(cp => cp.type === 'bridge');
+      if (bridgePoints.length > 0) {
+        recommendations.push("Check vehicle height clearance before proceeding through bridge areas");
+      }
+      
+      const intersectionPoints = route.criticalPoints.filter(cp => cp.type === 'intersection');
+      if (intersectionPoints.length > 2) {
+        recommendations.push("Multiple high-risk intersections detected - reduce speed and increase following distance");
+      }
+    }
+    
+    // Vehicle-specific recommendations
+    if (vehicle) {
+      if (vehicle.length > 40) {
+        recommendations.push("Large vehicle detected - allow extra space for turns and lane changes");
+      }
+      if (vehicle.height > 12) {
+        recommendations.push("Monitor overhead clearances and avoid low bridges");
+      }
+    }
+    
+    // Default safety recommendations
+    if (recommendations.length === 0) {
+      recommendations.push("Maintain safe following distance and observe all traffic regulations");
+    }
+    
+    return recommendations;
+  }
 }
 
-// Get all risk factors for display
-export function getAllRiskFactors(): NamedRiskFactor[] {
-  return RISK_FACTORS;
-
-}
+// Export convenience functions
+export const analyzeRouteRisk = RouteAnalysisService.analyzeRouteRisk;
+export const getAllRiskFactors = RouteAnalysisService.getAllRiskFactors;
+export const getRiskFactorsForRoute = RouteAnalysisService.getRiskFactorsForRoute;
+export const generateSafetyRecommendations = RouteAnalysisService.generateSafetyRecommendations;
