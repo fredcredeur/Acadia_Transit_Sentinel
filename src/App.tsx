@@ -10,6 +10,7 @@ import { RouteInput } from './components/RouteInput';
 import { DarkModeToggle } from './components/DarkModeToggle';
 import { Vehicle, Route, StopLocation, RouteSegment } from './types';
 import { RouteAnalysisService } from './services/routeAnalysisService';
+import { GoogleMapsService } from './services/googleMapsService';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useGeolocation } from './hooks/useGeolocation';
 import { LargeVehicleAnalysisPanel } from './components/LargeVehicleComponents';
