@@ -187,8 +187,6 @@ function App() {
 
     try {
       let stopsToUse = planningStops || [];
-      
-      // Add loop stop if needed
       if (isLoop && planningOrigin) {
         const loopStop: StopLocation = {
           id: 'loop-return',
@@ -199,42 +197,85 @@ function App() {
         };
         stopsToUse = [...stopsToUse, loopStop];
       }
-      
-      const isLargeVehicle = vehicle.length >= 30;
-      
-      console.log(`Analyzing route for ${isLargeVehicle ? 'LARGE' : 'standard'} vehicle:`, {
-        origin: planningOrigin,
-        destination: planningDestination, 
-        stops: stopsToUse.map(s => ({ address: s.address, order: s.order })),
-        vehicleLength: vehicle.length,
-        isLoop
-      });
-      
-      // Create mock routes using helper functions
-      const mockRoutes = createMockRoutes(planningOrigin, planningDestination, vehicle, stopsToUse, isLoop);
-      const result = {
-        routes: mockRoutes,
-        recommendedRouteId: mockRoutes[0]?.id || '',
-        largeVehicleAnalysis: generateMockLargeVehicleAnalysis(vehicle, mockRoutes)
-      };
 
-      setRoutes(result.routes);
-      setSelectedRouteId(result.recommendedRouteId);
-      setLargeVehicleAnalysis(result.largeVehicleAnalysis);
+      let analyzedRoutes: Route[] = [];
+      if (useRealData) {
+        const googleMapsService = GoogleMapsService.getInstance();
+        await googleMapsService.initialize();
+        
+        const waypoints = stopsToUse.map(s => s.address);
+        const directionsResult = await googleMapsService.getRoutes({
+          origin: planningOrigin,
+          destination: planningDestination,
+          waypoints: waypoints,
+        });
+
+        const transformedRoutes = directionsResult.routes.map((gRoute, index) =>
+          transformGoogleRouteToAppRoute(gRoute, index, stopsToUse)
+        );
+
+        analyzedRoutes = transformedRoutes.map(route => {
+          const { route: analyzed } = RouteAnalysisService.analyzeRouteRisk(route, vehicle);
+          return analyzed;
+        });
+
+      } else {
+        // Fallback to mock data
+        analyzedRoutes = createMockRoutes(planningOrigin, planningDestination, vehicle, stopsToUse, isLoop);
+      }
       
+      const largeVehicleAnalysisData = generateMockLargeVehicleAnalysis(vehicle, analyzedRoutes);
+
+      setRoutes(analyzedRoutes);
+      setSelectedRouteId(analyzedRoutes[0]?.id || '');
+      setLargeVehicleAnalysis(largeVehicleAnalysisData);
       setLastAnalyzedOrigin(planningOrigin);
       setLastAnalyzedDestination(planningDestination);
       setStops(stopsToUse);
-      
-      // Switch to overview view after analysis
       setCurrentView('overview');
-      
+
     } catch (err) {
       console.error('Enhanced route analysis failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to analyze routes. Please try again.');
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const transformGoogleRouteToAppRoute = (gRoute: google.maps.DirectionsRoute, index: number, stops: StopLocation[]): Route => {
+    let totalDistanceMeters = 0;
+    let totalDurationSeconds = 0;
+    const segments: RouteSegment[] = [];
+
+    gRoute.legs.forEach(leg => {
+      totalDistanceMeters += leg.distance?.value || 0;
+      totalDurationSeconds += leg.duration?.value || 0;
+      leg.steps.forEach((step, stepIndex) => {
+        segments.push({
+          id: `segment-${index}-${leg.start_address}-${stepIndex}`,
+          startLat: step.start_location.lat(),
+          startLng: step.start_location.lng(),
+          endLat: step.end_location.lat(),
+          endLng: step.end_location.lng(),
+          streetName: step.instructions.replace(/<[^>]*>/g, " "), // Basic cleaning
+          riskScore: 0, // To be calculated
+          riskFactors: {},
+          description: step.instructions.replace(/<[^>]*>/g, " "),
+        });
+      });
+    });
+
+    return {
+      id: `route-${index + 1}`,
+      name: gRoute.summary || `Route ${index + 1}`,
+      segments: segments,
+      totalDistance: totalDistanceMeters / 1609.34, // Convert to miles
+      estimatedTime: totalDurationSeconds / 60, // Convert to minutes
+      overallRisk: 0, // To be calculated
+      criticalPoints: [],
+      stops: stops,
+      waypoints: stops.map(s => s.address),
+    };
   };
 
   const handleRouteUpdate = async (routeId: string, newWaypoints: string[]) => {
