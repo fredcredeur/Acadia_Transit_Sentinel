@@ -260,7 +260,10 @@ function App() {
           endLng: step.end_location.lng(),
           streetName: step.instructions.replace(/<[^>]*>/g, " "), // Basic cleaning
           riskScore: 0, // To be calculated
-          riskFactors: {},
+          riskFactors: {
+            pedestrianTraffic: 0,
+            roadWidth: 0,
+          },
           description: step.instructions.replace(/<[^>]*>/g, " "),
         });
       });

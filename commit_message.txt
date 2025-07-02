@@ -1,0 +1,1 @@
+Fix: Resolve TypeScript errors in App.tsx
