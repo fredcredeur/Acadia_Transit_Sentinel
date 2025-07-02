@@ -1,4 +1,4 @@
-import { Clock, Navigation, AlertTriangle, MapPin } from 'lucide-react';
+import { Clock, Navigation, AlertTriangle } from 'lucide-react';
 import { Route } from '../types';
 
 interface RouteDetailsProps {

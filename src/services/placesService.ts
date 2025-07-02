@@ -207,13 +207,13 @@ export class PlacesService {
         resolve([]);
       }, 8000); // 8 second timeout
 
-      this.autocompleteService!.getPlacePredictions(request, (predictions, status) => {
+      this.autocompleteService!.getPlacePredictions(request, (_predictions, status) => {
         clearTimeout(timeout);
         
         console.log(`📡 Places API response: ${status}`);
         
-        if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
-          const formattedPredictions: PlacePrediction[] = predictions.map(prediction => ({
+        if (status === google.maps.places.PlacesServiceStatus.OK && _predictions) {
+          const formattedPredictions: PlacePrediction[] = _predictions.map(prediction => ({
             place_id: prediction.place_id || '',
             description: prediction.description,
             structured_formatting: {
@@ -302,15 +302,15 @@ export class PlacesService {
   // ✅ FIXED: Enhanced Louisiana search with better error handling
   public async getEnhancedLouisianaPredictions(input: string): Promise<PlacePrediction[]> {
     try {
-      const predictions = await this.getPlacePredictions(input, {
+      const _predictions = await this.getPlacePredictions(input, {
         componentRestrictions: { country: 'us' },
         types: ['geocode', 'establishment']
       });
 
       // Enhance results by boosting Louisiana addresses
-      return predictions.map(prediction => {
-        const isLouisiana = prediction.description.toLowerCase().includes('la') ||
-                           prediction.description.toLowerCase().includes('louisiana');
+      return _predictions.map(prediction => {
+        // const isLouisiana = prediction.description.toLowerCase().includes('la') ||
+        //                    prediction.description.toLowerCase().includes('louisiana');
         
         return prediction;
       }).sort((a, b) => {
@@ -345,4 +345,3 @@ export class PlacesService {
     };
   }
 }
-    

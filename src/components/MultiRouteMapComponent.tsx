@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Route, Vehicle, RouteSegment } from '../types';
 import { GoogleMapsService } from '../services/googleMapsService';
 import { RiskCalculator } from '../utils/riskCalculator';
@@ -112,8 +112,8 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       const destination = `${lastSegment.endLat},${lastSegment.endLng}`;
 
       // Get consistent route color
-      const routeIndex = routes.findIndex(r => r.id === selectedRouteId);
-      const routeColor = RouteColorManager.getRouteColor(routeIndex);
+    const _routeIndex = routes.findIndex(r => r.id === selectedRouteId);
+    const _routeColor = RouteColorManager.getRouteColor(_routeIndex);
 
       const directionsService = new google.maps.DirectionsService();
       const directionsRenderer = new google.maps.DirectionsRenderer({
@@ -121,7 +121,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         suppressMarkers: true, // We'll add our own draggable markers
         draggable: false,
         polylineOptions: {
-          strokeColor: routeColor,
+          strokeColor: _routeColor,
           strokeOpacity: 0.8,
           strokeWeight: 6,
           zIndex: 10
@@ -175,16 +175,16 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       setRouteRenderers(prev => new Map(prev).set(selected.id, directionsRenderer));
 
       // Add draggable origin and destination markers
-      await addDraggableOriginDestinationMarkers(selected, routeColor, origin, destination);
+      await addDraggableOriginDestinationMarkers(selected, _routeColor, origin, destination);
 
       // Add draggable waypoint markers
-      await addDraggableWaypointMarkers(selected, routeColor, waypoints);
+      await addDraggableWaypointMarkers(selected, _routeColor, waypoints);
 
       // Add route-specific overlays for risk visualization
-      await addRouteRiskOverlay(selected, routeResponse.routes[0], routeColor, routeIndex);
+      await addRouteRiskOverlay(selected, routeResponse.routes[0], _routeColor, _routeIndex);
 
       // Add draggable critical point markers
-      await addDraggableCriticalPointMarkers(selected, routeColor);
+      await addDraggableCriticalPointMarkers(selected, _routeColor);
 
       // Fit map to show the selected route
       const bounds = new google.maps.LatLngBounds();

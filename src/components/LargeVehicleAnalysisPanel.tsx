@@ -259,113 +259,63 @@ class LargeVehicleRoutingAlgorithm {
   /**
    * Generate route that prioritizes arterial roads with traffic lights
    */
-  private static generateArterialRoute(origin: string, destination: string, vehicle: Vehicle): Route | null {
-    // Implementation would use mapping service to find routes that:
-    // 1. Use major arterial roads (typically have traffic lights)
-    // 2. Avoid residential streets (typically have stop signs)
-    // 3. Prefer roads classified as "primary" or "secondary"
-    
-    // This would integrate with Google Maps Directions API with preferences:
-    const routePreferences = {
-      avoid: ['tolls'], // Don't avoid highways for large vehicles
-      mode: 'driving',
-      alternatives: true,
-      optimize_waypoints: true,
-      // Custom parameters for large vehicles:
-      vehicle_type: 'large_truck',
-      prefer_arterials: true,
-      avoid_residential: true,
-      min_road_width: vehicle.width + 4 // Minimum road width needed
-    };
-    
-    // Mock implementation - in real code, this would call the routing service
-    return this.createMockRoute('arterial', origin, destination, vehicle);
+  private static generateArterialRoute(_origin: string, _destination: string, _vehicle: Vehicle): Route | null {
+    return this.createMockRoute('arterial', _origin, _destination, _vehicle);
   }
   
   /**
    * Generate route that uses highways and controlled access roads
    */
-  private static generateHighwayRoute(origin: string, destination: string, vehicle: Vehicle): Route | null {
-    // Prefer highways and controlled access roads - no stop signs!
-    const routePreferences = {
-      prefer: ['highways', 'controlled_access'],
-      avoid: ['surface_streets'],
-      vehicle_restrictions: {
-        height: vehicle.height,
-        length: vehicle.length,
-        width: vehicle.width
-      }
-    };
-    
-    return this.createMockRoute('highway', origin, destination, vehicle);
+  private static generateHighwayRoute(_origin: string, _destination: string, _vehicle: Vehicle): Route | null {
+    return this.createMockRoute('highway', _origin, _destination, _vehicle);
   }
   
   /**
    * Generate route using designated truck routes
    */
-  private static generateTruckRoute(origin: string, destination: string, vehicle: Vehicle): Route | null {
-    // Use official truck routes which are designed for large vehicles
-    const routePreferences = {
-      vehicle_type: 'truck',
-      restrictions: {
-        height: vehicle.height,
-        length: vehicle.length,
-        width: vehicle.width,
-        weight: this.estimateVehicleWeight(vehicle)
-      },
-      prefer_truck_routes: true,
-      avoid_restrictions: true
-    };
-    
-    return this.createMockRoute('truck_route', origin, destination, vehicle);
+  private static generateTruckRoute(_origin: string, _destination: string, _vehicle: Vehicle): Route | null {
+    return this.createMockRoute('truck_route', _origin, _destination, _vehicle);
   }
   
   /**
    * Generate route that specifically seeks out traffic light intersections
    */
   private static generateTrafficLightLoopRoute(
-    origin: string, 
-    destination: string, 
-    vehicle: Vehicle,
+    _origin: string, 
+    _destination: string, 
+    _vehicle: Vehicle,
     intersections: IntersectionData[]
   ): Route | null {
-    // Find path that connects traffic light intersections, even if longer
     const trafficLightIntersections = intersections.filter(i => i.type === 'traffic_light');
     
     if (trafficLightIntersections.length < 2) return null;
     
-    // Create waypoints at major traffic light intersections
     const waypoints = this.selectOptimalTrafficLightWaypoints(
-      origin, 
-      destination, 
+      _origin, 
+      _destination, 
       trafficLightIntersections,
-      vehicle
+      _vehicle
     );
     
-    return this.createMockRoute('traffic_light_loop', origin, destination, vehicle, waypoints);
+    return this.createMockRoute('traffic_light_loop', _origin, _destination, _vehicle, waypoints);
   }
   
   /**
    * Select optimal traffic light intersections as waypoints
    */
   private static selectOptimalTrafficLightWaypoints(
-    origin: string,
-    destination: string,
+    _origin: string,
+    _destination: string,
     trafficLights: IntersectionData[],
-    vehicle: Vehicle
+    _vehicle: Vehicle
   ): string[] {
-    // Score traffic lights based on:
-    // 1. Position relative to origin/destination
-    // 2. Road capacity for large vehicles
-    // 3. Turn lane availability
-    
     return trafficLights
       .filter(tl => 
-        tl.laneCount >= 2 && // At least 2 lanes
-        !tl.schoolZone && // Avoid school zones
-        tl.averageTrafficVolume < 1200 // Not too congested
+        tl.laneCount >= 2 && 
+        !tl.schoolZone && 
+        tl.averageTrafficVolume < 1200 
       )
-      .slice(0, 3) // Maximum 3 waypoints
+      .slice(0, 3) 
       .map(tl => `${tl.lat},${tl.lng}`);
   }
   
@@ -373,7 +323,6 @@ class LargeVehicleRoutingAlgorithm {
    * Utility functions
    */
   private static isIntersectionInSegment(intersection: IntersectionData, segment: RouteSegment): boolean {
-    // Check if intersection coordinates fall within segment bounds
     const segmentBounds = {
       north: Math.max(segment.startLat, segment.endLat) + 0.001,
       south: Math.min(segment.startLat, segment.endLat) - 0.001,
@@ -388,14 +337,11 @@ class LargeVehicleRoutingAlgorithm {
   }
   
   private static estimateVehicleWeight(vehicle: Vehicle): number {
-    // Rough weight estimation based on dimensions
     const volume = vehicle.length * vehicle.width * vehicle.height;
-    return volume * 0.02; // Rough conversion factor to tons
+    return volume * 0.02; 
   }
   
   private static findShortestRoute(route: Route): { distance: number; time: number } {
-    // This would calculate theoretical shortest distance/time
-    // For now, return route values with 10% reduction as baseline
     return {
       distance: route.totalDistance * 0.9,
       time: route.estimatedTime * 0.9
@@ -409,18 +355,17 @@ class LargeVehicleRoutingAlgorithm {
     vehicle: Vehicle,
     waypoints?: string[]
   ): Route {
-    // Mock route creation - in real implementation, this would call routing service
-    const baseDistance = 10; // Mock distance
+    const baseDistance = 10; 
     const multiplier = type === 'traffic_light_loop' ? 1.3 : 
                       type === 'highway' ? 0.9 : 1.0;
     
     return {
       id: `${type}-${Date.now()}`,
       name: `${type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())} Route`,
-      segments: [], // Would be populated by routing service
+      segments: [], 
       totalDistance: baseDistance * multiplier,
-      estimatedTime: (baseDistance * multiplier) / 30 * 60, // Assume 30 mph average
-      overallRisk: 0, // Mock overall risk
+      estimatedTime: (baseDistance * multiplier) / 30 * 60, 
+      overallRisk: 0, 
       criticalPoints: [],
       stops: waypoints?.map((wp, i) => ({
         id: `waypoint-${i}`,
@@ -439,35 +384,28 @@ export class EnhancedRiskCalculator {
     const isLargeVehicle = vehicle.length >= 30;
     
     if (!isLargeVehicle) {
-      // Use existing risk calculation for smaller vehicles
       return this.calculateStandardRisk(route, vehicle);
     }
     
-    // Enhanced risk calculation for large vehicles
     let totalRisk = 0;
     let intersectionCount = 0;
     
-    route.segments.forEach(segment => {
+    route.segments.forEach((segment, _index, _array) => { // Added _index, _array to mark as unused
       let segmentRisk = this.calculateStandardSegmentRisk(segment, vehicle);
       
-      // Apply large vehicle penalties
       if (segment.riskFactors) {
-        // Heavy penalty for stop signs
         if (segment.description?.toLowerCase().includes('stop')) {
           segmentRisk += 40;
         }
         
-        // Bonus for traffic lights
         if (segment.description?.toLowerCase().includes('traffic light')) {
           segmentRisk -= 15;
         }
         
-        // Penalty for narrow roads
         if (segment.riskFactors.roadWidth > 50) {
           segmentRisk += 25;
         }
         
-        // School zone penalty
         if (segment.description?.toLowerCase().includes('school')) {
           segmentRisk += 30;
         }
@@ -481,12 +419,10 @@ export class EnhancedRiskCalculator {
   }
   
   private static calculateStandardRisk(route: Route, vehicle: Vehicle): number {
-    // Placeholder for existing risk calculation
     return 50;
   }
   
   private static calculateStandardSegmentRisk(segment: RouteSegment, vehicle: Vehicle): number {
-    // Placeholder for existing segment risk calculation
     return 30;
   }
   
@@ -500,8 +436,7 @@ export class EnhancedRiskCalculator {
     
     if (!isLargeVehicle) return recommendations;
     
-    // Analyze route for stop sign intersections
-    const stopSignCount = route.segments.filter(segment =>
+    const stopSignCount = route.segments.filter((segment, _index, _array) => // Added _index, _array
       segment.description?.toLowerCase().includes('stop')
     ).length;
     
@@ -531,8 +466,7 @@ export class EnhancedRiskCalculator {
       );
     }
     
-    // Check for school zones
-    const hasSchoolZones = route.segments.some(segment =>
+    const hasSchoolZones = route.segments.some((segment, _index, _array) => // Added _index, _array
       segment.description?.toLowerCase().includes('school')
     );
     

@@ -1,4 +1,4 @@
-import { Menu, X, Map, AlertTriangle, Settings } from 'lucide-react';
+import { Menu, Map, AlertTriangle, Settings } from 'lucide-react';
 
 interface HeaderProps {
   toggleSidebar: () => void;

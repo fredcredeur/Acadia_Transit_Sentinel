@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Shield, Truck, Map, AlertTriangle } from 'lucide-react';
 import { VehicleForm } from './components/VehicleForm';
 import { MultiRouteMapComponent } from './components/MultiRouteMapComponent';
@@ -558,8 +558,20 @@ function App() {
                 </div>
               </div>
 
+              {/* Large Vehicle Analysis Panel */}
+              {largeVehicleAnalysis && (
+                <div className="xl:col-span-1 order-1 xl:order-2">
+                  <LargeVehicleAnalysisPanel
+                    routes={routes}
+                    selectedRouteId={selectedRouteId}
+                    vehicle={vehicle}
+                    largeVehicleAnalysis={largeVehicleAnalysis}
+                  />
+                </div>
+              )}
+
               {/* Multi-Route Map with Draggable Points */}
-              <div className="xl:col-span-3 order-1 xl:order-2">
+              <div className="xl:col-span-2 order-3 xl:order-3">
                 {routes.length > 0 ? (
                   <MultiRouteMapComponent
                     routes={routes}

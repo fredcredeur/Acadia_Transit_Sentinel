@@ -1,6 +1,6 @@
 // Acadia_Transit_Sentinel/src/services/largeVehicleRouting.ts
 
-import { Route, Vehicle, RouteSegment } from '../types';
+import { Route, Vehicle } from '../types';
 
 // Placeholder for LargeVehicleRoutingAlgorithm
 export class LargeVehicleRoutingAlgorithm {
@@ -11,7 +11,7 @@ export class LargeVehicleRoutingAlgorithm {
 
 // Placeholder for EnhancedRiskCalculator
 export class EnhancedRiskCalculator {
-  public static calculateLargeVehicleRisk(route: Route, vehicle: Vehicle): number {
+  public static calculateLargeVehicleRisk(route: Route, _vehicle: Vehicle): number {
     // Placeholder implementation: calculate a dummy risk score
     // In a real scenario, this would involve detailed analysis of route segments,
     // intersection types, road conditions, and vehicle dimensions.
@@ -28,7 +28,7 @@ export class EnhancedRiskCalculator {
     return Math.max(0, Math.min(100, risk)); // Ensure risk is between 0 and 100
   }
 
-  public static getLargeVehicleSafetyRecommendations(route: Route, vehicle: Vehicle): string[] {
+  public static getLargeVehicleSafetyRecommendations(route: Route, _vehicle: Vehicle): string[] {
     const recommendations: string[] = [];
     const stopSignCount = (route as any).intersectionSummary?.totalStopSigns || 0;
     

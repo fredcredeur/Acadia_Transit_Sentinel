@@ -28,7 +28,6 @@ export class GoogleMapsService {
   private loader: Loader;
   private directionsService?: google.maps.DirectionsService;
   private geocoder?: google.maps.Geocoder;
-  private placesService?: google.maps.places.PlacesService;
   private isLoaded = false;
 
   private constructor() {
@@ -206,8 +205,8 @@ export class GoogleMapsService {
       if (result.routes.length > 0) {
         const leg = result.routes[0].legs[0];
         if (leg) { // Ensure leg is defined
-          const duration = leg.duration?.value || 0;
-          const durationInTraffic = (leg.duration_in_traffic?.value || duration) || 1; // Ensure not zero to prevent division by zero
+          const duration = Number(leg.duration?.value || 0);
+          const durationInTraffic = Number((leg.duration_in_traffic?.value || duration) || 1); // Ensure not zero to prevent division by zero
           const distance = leg.distance?.value || 1;
           const currentSpeed = (distance / durationInTraffic) * 2.237;
           const congestionRatio = duration / durationInTraffic;
@@ -307,13 +306,13 @@ export class GoogleMapsService {
     return this.getConstrainedRoutes(request, constraints);
   }
 
-  private async getBlockRoutingWithStops(request: { origin: string; destination: string; waypoints?: string[]; vehicle: Vehicle; avoidHighways?: boolean; avoidTolls?: boolean }, vehicleClass: VehicleClass): Promise<google.maps.DirectionsResult> {
+  private async getBlockRoutingWithStops(request: { origin: string; destination: string; waypoints?: string[]; vehicle: Vehicle; avoidHighways?: boolean; avoidTolls?: boolean }, _vehicleClass: VehicleClass): Promise<google.maps.DirectionsResult> {
     const allPoints = [request.origin, ...(request.waypoints || []), request.destination];
-    const optimized = await this.optimizeWaypointsForBlockRouting(allPoints, vehicleClass);
-    return this.getConstrainedRoutes({ ...request, waypoints: optimized }, VehicleClassificationService.getRoutingConstraints(vehicleClass));
+    const optimized = await this.optimizeWaypointsForBlockRouting(allPoints, _vehicleClass);
+    return this.getConstrainedRoutes({ ...request, waypoints: optimized }, VehicleClassificationService.getRoutingConstraints(_vehicleClass));
   }
 
-  private async optimizeWaypointsForBlockRouting(points: string[], vehicleClass: VehicleClass): Promise<string[]> {
+  private async optimizeWaypointsForBlockRouting(points: string[], _vehicleClass: VehicleClass): Promise<string[]> {
     if (points.length <= 2) return points.slice(1, -1);
     const optimized: string[] = [];
     for (let i = 1; i < points.length - 1; i++) {
@@ -321,7 +320,7 @@ export class GoogleMapsService {
         const res = await this.geocodeAddress(points[i]);
         if (res.length > 0) {
           const loc = res[0].geometry.location;
-          const candidate = await this.findOptimalApproachPoint(loc.lat(), loc.lng(), vehicleClass);
+          const candidate = await this.findOptimalApproachPoint(loc.lat(), loc.lng(), _vehicleClass);
           optimized.push(candidate || points[i]);
         } else optimized.push(points[i]);
       } catch {
@@ -331,7 +330,7 @@ export class GoogleMapsService {
     return optimized;
   }
 
-  private async findOptimalApproachPoint(lat: number, lng: number, vehicleClass: VehicleClass): Promise<string | null> {
+  private async findOptimalApproachPoint(lat: number, lng: number, _vehicleClass: VehicleClass): Promise<string | null> {
     const deltas = [0.001, -0.001, 0.0007];
     for (const dx of deltas) for (const dy of deltas) {
       try {
@@ -389,18 +388,5 @@ export class GoogleMapsService {
       }
       return true;
     });
-  }
-
-  private containsUTurn(instructions: string): boolean {
-    return ['u-turn','u turn','turn around'].some(i => instructions.includes(i));
-  }
-
-  private containsSharpTurn(instructions: string, maxAngle: number): boolean {
-    if (maxAngle >= 180) return false;
-    return ['sharp turn','hairpin'].some(i => instructions.includes(i));
-  }
-
-  private isResidentialArea(instructions: string): boolean {
-    return ['residential','private road'].some(i => instructions.includes(i));
   }
 }

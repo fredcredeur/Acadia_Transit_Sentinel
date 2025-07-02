@@ -1,7 +1,7 @@
 // Enhanced RouteAnalysisService.ts - Fixed for consistent risk calculations
 
 import { GoogleMapsService } from './googleMapsService';
-import { LargeVehicleRoutingAlgorithm, EnhancedRiskCalculator } from './largeVehicleRouting';
+import { EnhancedRiskCalculator } from './largeVehicleRouting';
 import { Route, Vehicle, StopLocation, RouteSegment as BaseRouteSegment } from '../types';
 
 // Extend RouteSegment to include intersectionAnalysis and largeVehicleRisk
@@ -226,8 +226,8 @@ export class EnhancedRouteAnalysisService {
   // 🚌 BUS-SPECIFIC ROUTING: Prioritizes arterial roads with traffic lights
   private async generateBusOptimizedRoutes(
     request: RouteAnalysisRequest,
-    originCoords: { address: string; lat: number; lng: number },
-    destinationCoords: { address: string; lat: number; lng: number }
+    _originCoords: { address: string; lat: number; lng: number },
+    _destinationCoords: { address: string; lat: number; lng: number }
   ): Promise<Route[]> {
     const routes: Route[] = [];
     
@@ -291,8 +291,8 @@ export class EnhancedRouteAnalysisService {
   // 🚛 LARGE VEHICLE ROUTING: Safety-focused but more flexible than buses
   private async generateLargeVehicleRoutes(
     request: RouteAnalysisRequest,
-    originCoords: { address: string; lat: number; lng: number },
-    destinationCoords: { address: string; lat: number; lng: number }
+    _originCoords: { address: string; lat: number; lng: number },
+    _destinationCoords: { address: string; lat: number; lng: number }
   ): Promise<Route[]> {
     const routes: Route[] = [];
     
@@ -351,8 +351,8 @@ export class EnhancedRouteAnalysisService {
   // 🚗 STANDARD ROUTING: Fastest and most efficient
   private async generateStandardRoutes(
     request: RouteAnalysisRequest,
-    originCoords: { address: string; lat: number; lng: number },
-    destinationCoords: { address: string; lat: number; lng: number }
+    _originCoords: { address: string; lat: number; lng: number },
+    _destinationCoords: { address: string; lat: number; lng: number }
   ): Promise<Route[]> {
     const routes: Route[] = [];
     
@@ -545,8 +545,8 @@ export class EnhancedRouteAnalysisService {
   private createMeaningfulVariation(
     baseRoute: Route,
     variationIndex: number,
-    originCoords: { address: string; lat: number; lng: number },
-    destinationCoords: { address: string; lat: number; lng: number },
+    _originCoords: { address: string; lat: number; lng: number },
+    _destinationCoords: { address: string; lat: number; lng: number },
     vehicle: Vehicle
   ): Route {
     const isBus = vehicle.length >= this.BUS_THRESHOLD;
@@ -582,6 +582,60 @@ export class EnhancedRouteAnalysisService {
         id: `variation-segment-${variationIndex}`,
         streetName: `${variation.name} Path`,
         description: `${variation.name} with different routing characteristics`,
+        startLat: _originCoords.lat,
+        startLng: _originCoords.lng,
+        endLat: _destinationCoords.lat,
+        endLng: _destinationCoords.lng,
+        riskFactors: {
+          pedestrianTraffic: Math.max(10, Math.min(90, 40 + variation.riskAdjustment)),
+          roadWidth: Math.max(20, Math.min(80, 50 - variation.riskAdjustment)),
+          trafficCongestion: Math.max(10, Math.min(90, 45 + (variation.riskAdjustment / 2))),
+          speedLimit: 35,
+          heightRestriction: 0
+        },
+        riskScore: 0
+      }],
+      totalDistance: baseRoute.totalDistance * variation.distanceMultiplier,
+      estimatedTime: baseRoute.estimatedTime * variation.timeMultiplier,
+      criticalPoints: [],
+      stops: baseRoute.stops,
+      overallRisk: 0 // Added to satisfy Route type
+    };
+  }
+
+  private async createRealisticFallbackRoute(
+    request: RouteAnalysisRequest,
+    _originCoords: { address: string; lat: number; lng: number },
+    _destinationCoords: { address: string; lat: number; lng: number }
+  ): Promise<Route> {
+    console.log('🆘 Creating realistic fallback route');
+    
+    const distance = this.calculateDistance(
+      _originCoords.lat, _originCoords.lng,
+      _destinationCoords.lat, _destinationCoords.lng
+    );
+
+    const estimatedTime = (distance / 30) * 60; // 30 mph average
+
+    return {
+      id: 'fallback-route',
+      name: 'Direct Route',
+      segments: [{
+        id: 'fallback-segment',
+        streetName: 'Direct Path',
+description: `Direct route from ${_originCoords.address} to ${_
+
+[Response interrupted by a tool use result. Only one tool may be used at a time and should be placed at the end of the message.]
+        riskFactors: {
+          pedestrianTraffic: 50,
+          roadWidth: 35,
+          trafficCongestion: 40,
+          speedLimit: 35,
+          heightRestriction: 0
+        },
+        riskScore: 0 // Added risk score field
+      }],
+      totalDistance: distance,
         startLat: originCoords.lat,
         startLng: originCoords.lng,
         endLat: destinationCoords.lat,
@@ -605,14 +659,14 @@ export class EnhancedRouteAnalysisService {
 
   private async createRealisticFallbackRoute(
     request: RouteAnalysisRequest,
-    originCoords: { address: string; lat: number; lng: number },
-    destinationCoords: { address: string; lat: number; lng: number }
+    _originCoords: { address: string; lat: number; lng: number },
+    _destinationCoords: { address: string; lat: number; lng: number }
   ): Promise<Route> {
     console.log('🆘 Creating realistic fallback route');
     
     const distance = this.calculateDistance(
-      originCoords.lat, originCoords.lng,
-      destinationCoords.lat, destinationCoords.lng
+      _originCoords.lat, _originCoords.lng,
+      _destinationCoords.lat, _destinationCoords.lng
     );
     
     const estimatedTime = (distance / 30) * 60; // 30 mph average
@@ -622,12 +676,8 @@ export class EnhancedRouteAnalysisService {
       name: 'Direct Route',
       segments: [{
         id: 'fallback-segment',
-        streetName: 'Direct Path',
-        description: `Direct route from ${originCoords.address} to ${destinationCoords.address}`,
-        startLat: originCoords.lat,
-        startLng: originCoords.lng,
-        endLat: destinationCoords.lat,
-        endLng: destinationCoords.lng,
+streetName: 'Direct Path',
+        description: `${description}
         riskFactors: {
           pedestrianTraffic: 35,
           roadWidth: 40,
@@ -638,10 +688,10 @@ export class EnhancedRouteAnalysisService {
         riskScore: 0
       }],
       totalDistance: distance,
-      estimatedTime: estimatedTime,
+      estimatedTime,
       criticalPoints: [],
-      stops: request.stops,
-      overallRisk: 0 // Added to satisfy Route type
+      stops: request.stops || [],
+      overallRisk: 0
     };
   }
 

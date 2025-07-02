@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GoogleMapsService } from '../services/googleMapsService';
-import { MapPin, Navigation, AlertTriangle, RotateCcw } from 'lucide-react';
+import { MapPin, AlertTriangle, RotateCcw } from 'lucide-react';
 import { StopLocation } from '../types';
 
 interface PlanningMapComponentProps {

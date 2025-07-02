@@ -99,10 +99,10 @@ export const RouteMap: React.FC<RouteMapProps> = ({
               <svg className="absolute inset-0 w-full h-full">
                 <defs>
                   <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    {segmentsWithRisk.map((segment, index) => (
+                    {segmentsWithRisk.map((segment, _index) => (
                       <stop
                         key={segment.id}
-                        offset={`${(index / segmentsWithRisk.length) * 100}%`}
+                        offset={`${((_index || 0) / segmentsWithRisk.length) * 100}%`}
                         stopColor={RiskCalculator.getRiskColor(segment.adjustedRisk)}
                       />
                     ))}
@@ -119,9 +119,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
                 />
                 
                 {/* Route points */}
-                {segmentsWithRisk.map((segment, index) => {
-                  const x = 50 + (index * 67.5);
-                  const y = 250 - (index * 32.5);
+                {segmentsWithRisk.map((segment, _index) => {
+                  const x = 50 + ((_index || 0) * 67.5);
+                  const y = 250 - ((_index || 0) * 32.5);
                   return (
                     <g key={segment.id}>
                       <circle
@@ -146,7 +146,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
               </svg>
 
               {/* Critical points indicators */}
-              {route.criticalPoints.map((point, index) => (
+              {route.criticalPoints.map((point, _index) => (
                 <div
                   key={point.segmentId}
                   className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
