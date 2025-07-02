@@ -1,1 +1,1 @@
-Fix: Resolve TypeScript errors in App.tsx
+Fix: Add missing risk factor properties in App.tsx

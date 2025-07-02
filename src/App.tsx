@@ -263,6 +263,9 @@ function App() {
           riskFactors: {
             pedestrianTraffic: 0,
             roadWidth: 0,
+            trafficCongestion: 0,
+            speedLimit: 0,
+            heightRestriction: 0
           },
           description: step.instructions.replace(/<[^>]*>/g, " "),
         });
