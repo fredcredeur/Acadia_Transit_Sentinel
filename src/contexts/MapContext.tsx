@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
-import { Location, Route, RiskFactor, MapContextType } from '../types';
+import { Location, Route, NamedRiskFactor, MapContextType } from '../types';
 
 const MapContext = createContext<MapContextType | undefined>(undefined);
 
@@ -8,7 +8,7 @@ export function MapProvider({ children }: { children: ReactNode }) {
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
   const [origin, setOrigin] = useState<Location | null>(null);
   const [destination, setDestination] = useState<Location | null>(null);
-  const [riskFactors, setRiskFactors] = useState<RiskFactor[]>([]);
+  const [riskFactors, setRiskFactors] = useState<NamedRiskFactor[]>([]);
 
   return (
     <MapContext.Provider

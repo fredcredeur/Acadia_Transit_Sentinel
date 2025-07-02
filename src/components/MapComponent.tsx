@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import { useMapContext } from '../contexts/MapContext';
+import { LatLngCoordinates } from '../types'; // Import LatLngCoordinates
 
 export function MapComponent() {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -69,42 +70,83 @@ export function MapComponent() {
     markersRef.current.forEach(marker => marker.setMap(null));
     markersRef.current = [];
     
-    // Create path from route points
-    const path = selectedRoute.points.map(point => ({
-      lat: point.location.position.lat,
-      lng: point.location.position.lng
-    }));
+    // Create path from route segments
+    const path: google.maps.LatLngLiteral[] = [];
+    selectedRoute.segments.forEach(segment => {
+      path.push({ lat: segment.startLat, lng: segment.startLng });
+      path.push({ lat: segment.endLat, lng: segment.endLng });
+    });
     
     // Create polyline for the route
     polylineRef.current = new google.maps.Polyline({
       path,
       geodesic: true,
-      strokeColor: selectedRoute.color || '#0284c7',
+      strokeColor: '#0284c7', // Default color, as Route does not have a color property
       strokeOpacity: 1.0,
       strokeWeight: 4,
       map
     });
     
-    // Add markers for stops
-    selectedRoute.points.forEach((point, index) => {
-      if (point.isStop || index === 0 || index === selectedRoute.points.length - 1) {
-        const marker = new google.maps.Marker({
-          position: point.location.position,
-          map,
-          title: point.location.name,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: index === 0 ? '#10b981' : index === selectedRoute.points.length - 1 ? '#ef4444' : '#6366f1',
-            fillOpacity: 1,
-            strokeWeight: 2,
-            strokeColor: '#ffffff'
-          }
-        });
-        
-        markersRef.current.push(marker);
-      }
+    // Add markers for origin, destination, and stops
+    const newMarkers: google.maps.Marker[] = [];
+
+    // Origin marker (first segment's start)
+    if (selectedRoute.segments.length > 0) {
+      const originSegment = selectedRoute.segments[0];
+      const originMarker = new google.maps.Marker({
+        position: { lat: originSegment.startLat, lng: originSegment.startLng },
+        map,
+        title: 'Origin',
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 8,
+          fillColor: '#10b981', // Green
+          fillOpacity: 1,
+          strokeWeight: 2,
+          strokeColor: '#ffffff'
+        }
+      });
+      newMarkers.push(originMarker);
+    }
+
+    // Destination marker (last segment's end)
+    if (selectedRoute.segments.length > 0) {
+      const destinationSegment = selectedRoute.segments[selectedRoute.segments.length - 1];
+      const destinationMarker = new google.maps.Marker({
+        position: { lat: destinationSegment.endLat, lng: destinationSegment.endLng },
+        map,
+        title: 'Destination',
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 8,
+          fillColor: '#ef4444', // Red
+          fillOpacity: 1,
+          strokeWeight: 2,
+          strokeColor: '#ffffff'
+        }
+      });
+      newMarkers.push(destinationMarker);
+    }
+
+    // Stop markers
+    selectedRoute.stops?.forEach(stop => {
+      const stopMarker = new google.maps.Marker({
+        position: { lat: parseFloat(stop.address.split(',')[0]), lng: parseFloat(stop.address.split(',')[1]) } as LatLngCoordinates, // Assuming stop.address is "lat,lng"
+        map,
+        title: stop.name || stop.address,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 6,
+          fillColor: '#6366f1', // Indigo
+          fillOpacity: 1,
+          strokeWeight: 2,
+          strokeColor: '#ffffff'
+        }
+      });
+      newMarkers.push(stopMarker);
     });
+    
+    markersRef.current = newMarkers;
     
     // Fit bounds to show the entire route
     const bounds = new google.maps.LatLngBounds();
@@ -125,7 +167,7 @@ export function MapComponent() {
     // Add markers for risk factors
     riskFactors.forEach(factor => {
       const marker = new google.maps.Marker({
-        position: factor.location,
+        position: { lat: factor.location.lat, lng: factor.location.lng }, // Use lat/lng from NamedRiskFactor
         map,
         title: factor.name,
         icon: {

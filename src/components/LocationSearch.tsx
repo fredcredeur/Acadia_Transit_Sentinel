@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, MapPin } from 'lucide-react';
 import { useMapContext } from '../contexts/MapContext';
-import { Location } from '../types';
+import { Location, LatLngCoordinates } from '../types';
 
 export function LocationSearch() {
   const { map, setOrigin, setDestination, origin, destination } = useMapContext();
@@ -48,7 +48,7 @@ export function LocationSearch() {
           position: {
             lat: place.geometry.location.lat(),
             lng: place.geometry.location.lng()
-          }
+          } as LatLngCoordinates // Cast to LatLngCoordinates
         };
         setOrigin(newLocation);
         setOriginQuery(place.name || '');
@@ -65,7 +65,7 @@ export function LocationSearch() {
           position: {
             lat: place.geometry.location.lat(),
             lng: place.geometry.location.lng()
-          }
+          } as LatLngCoordinates // Cast to LatLngCoordinates
         };
         setDestination(newLocation);
         setDestinationQuery(place.name || '');

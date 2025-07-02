@@ -117,9 +117,16 @@ export interface RouteAnalysisRequest {
   isLoop?: boolean;
 }
 
-export interface Location {
+export interface LatLngCoordinates {
   lat: number;
   lng: number;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  address: string;
+  position: LatLngCoordinates;
 }
 
 export interface NamedRiskFactor {
