@@ -167,6 +167,25 @@ export class RouteAnalysisService {
       factors.push('school_zone');
     }
 
+    // Intersection and Turn Type Risks
+    if (segment.intersectionType === 'stop_sign') {
+      let stopSignPenalty = 15; // Base penalty for stop signs
+      if (segment.turnType === 'left') {
+        stopSignPenalty += 25; // Higher penalty for left turns at stop signs
+        factors.push('stop_sign_left_turn');
+      } else {
+        factors.push('stop_sign_intersection');
+      }
+      // Increase penalty for large vehicles
+      if (vehicle && (vehicle.length > 30 || vehicle.height > 12)) {
+        stopSignPenalty += 15; 
+      }
+      totalRisk += stopSignPenalty;
+    } else if (segment.intersectionType === 'traffic_light') {
+      totalRisk -= 10; // Reward traffic lights (safer)
+      factors.push('traffic_light_intersection');
+    }
+
     // Vehicle-specific risks
     if (vehicle) {
       if (vehicle.height > 12 && segment.description.toLowerCase().includes('bridge')) {

@@ -58,6 +58,8 @@ export interface RouteSegment {
   riskScore: number;
   riskFactors: RiskFactors;
   description: string;
+  intersectionType?: 'stop_sign' | 'traffic_light' | 'none'; // New: Type of intersection
+  turnType?: 'left' | 'right' | 'straight' | 'none'; // New: Type of turn at the end of the segment
   liveTrafficData?: { // 🚦 NEW: Live traffic information
     congestionLevel: 'low' | 'moderate' | 'heavy' | 'severe';
     currentSpeed: number;

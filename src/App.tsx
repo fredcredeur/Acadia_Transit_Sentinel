@@ -59,44 +59,82 @@ function App() {
   const createMockRoutes = (origin: string, destination: string, vehicle: Vehicle, stops: StopLocation[], isLoop: boolean): Route[] => {
     const baseDistance = 10 + Math.random() * 20; // 10-30 miles
     const routes: Route[] = [];
-    const routeNames = [`Fastest route to ${destination}`, `Safest route to ${destination}`, `Balanced route to ${destination}`];
 
-    for (let i = 0; i < 3; i++) {
-      const route: Route = {
-        id: `route-${i + 1}`,
-        name: routeNames[i] || `Route ${i + 1} to ${destination}`,
-        segments: createMockSegments(origin, destination, 5 + i * 2),
-        totalDistance: baseDistance + i * 2,
-        estimatedTime: (baseDistance + i * 2) * 2.5 + stops.length * 5, // Rough estimate
-        overallRisk: 30 + i * 15 + Math.random() * 10,
-        criticalPoints: [],
-        stops: stops,
-        waypoints: stops.map(stop => stop.address)
-      };
+    // Safest Route
+    const safestRoute: Route = {
+      id: `route-safest`,
+      name: `Safest route to ${destination}`,
+      segments: createMockSegments(origin, destination, 7, 'safest'), // More segments for potentially longer, safer route
+      totalDistance: baseDistance + 5 + Math.random() * 5,
+      estimatedTime: (baseDistance + 5) * 2.5 + stops.length * 5 + Math.random() * 10,
+      overallRisk: 20 + Math.random() * 10, // Lower risk
+      criticalPoints: [],
+      stops: stops,
+      waypoints: stops.map(stop => stop.address)
+    };
+    routes.push(safestRoute);
 
-      // Add critical points for higher risk routes
-      if (i > 0) {
-        route.criticalPoints = [{
-          segmentId: route.segments[Math.floor(route.segments.length / 2)].id,
-          position: Math.floor(route.segments.length / 2),
-          type: 'intersection',
-          riskLevel: 'high',
-          description: `High-risk intersection on ${route.name}`
-        }];
-      }
+    // Fastest Route
+    const fastestRoute: Route = {
+      id: `route-fastest`,
+      name: `Fastest route to ${destination}`,
+      segments: createMockSegments(origin, destination, 5, 'fastest'),
+      totalDistance: baseDistance + Math.random() * 5,
+      estimatedTime: (baseDistance) * 2.5 + stops.length * 5 + Math.random() * 5,
+      overallRisk: 50 + Math.random() * 20, // Higher risk
+      criticalPoints: [],
+      stops: stops,
+      waypoints: stops.map(stop => stop.address)
+    };
+    routes.push(fastestRoute);
 
-      routes.push(route);
-    }
+    // Balanced Route
+    const balancedRoute: Route = {
+      id: `route-balanced`,
+      name: `Balanced route to ${destination}`,
+      segments: createMockSegments(origin, destination, 6, 'balanced'),
+      totalDistance: baseDistance + 2 + Math.random() * 5,
+      estimatedTime: (baseDistance + 2) * 2.5 + stops.length * 5 + Math.random() * 5,
+      overallRisk: 35 + Math.random() * 15, // Medium risk
+      criticalPoints: [],
+      stops: stops,
+      waypoints: stops.map(stop => stop.address)
+    };
+    routes.push(balancedRoute);
 
     return routes;
   };
 
-  const createMockSegments = (origin: string, destination: string, count: number): RouteSegment[] => {
+  const createMockSegments = (origin: string, destination: string, count: number, routeType: 'safest' | 'fastest' | 'balanced'): RouteSegment[] => {
     const segments: RouteSegment[] = [];
     const originStreet = origin.split(',')[0] || 'Origin St';
     const destinationStreet = destination.split(',')[0] || 'Destination Ave';
 
     for (let i = 0; i < count; i++) {
+      let intersectionType: 'stop_sign' | 'traffic_light' | 'none' = 'none';
+      let turnType: 'left' | 'right' | 'straight' | 'none' = 'straight';
+      let riskScore = Math.random() * 100;
+
+      if (i < count - 1) { // Not the last segment
+        if (routeType === 'safest') {
+          // Prioritize traffic lights and straight/right turns
+          intersectionType = Math.random() < 0.7 ? 'traffic_light' : 'stop_sign';
+          turnType = Math.random() < 0.8 ? 'straight' : (Math.random() < 0.5 ? 'right' : 'left');
+          if (intersectionType === 'stop_sign' && turnType === 'left') {
+            riskScore += 30; // Penalize left turns at stop signs
+          } else if (intersectionType === 'traffic_light') {
+            riskScore -= 20; // Reward traffic lights
+          }
+        } else if (routeType === 'fastest') {
+          // Less concern for intersection type, focus on speed
+          intersectionType = Math.random() < 0.5 ? 'traffic_light' : 'stop_sign';
+          turnType = Math.random() < 0.6 ? 'straight' : (Math.random() < 0.5 ? 'right' : 'left');
+        } else { // balanced
+          intersectionType = Math.random() < 0.6 ? 'traffic_light' : 'stop_sign';
+          turnType = Math.random() < 0.7 ? 'straight' : (Math.random() < 0.5 ? 'right' : 'left');
+        }
+      }
+
       segments.push({
         id: `segment-${i}`,
         startLat: 30.2241 + (i * 0.01),
@@ -104,7 +142,7 @@ function App() {
         endLat: 30.2241 + ((i + 1) * 0.01),
         endLng: -92.0198 + ((i + 1) * 0.01),
         streetName: i === 0 ? originStreet : (i === count - 1 ? destinationStreet : `Connecting Street ${i}`),
-        riskScore: Math.random() * 100,
+        riskScore: Math.max(0, Math.min(100, riskScore)), // Ensure riskScore is between 0 and 100
         riskFactors: {
           pedestrianTraffic: Math.random() * 100,
           roadWidth: Math.random() * 100,
@@ -112,7 +150,9 @@ function App() {
           speedLimit: 25 + Math.random() * 30,
           heightRestriction: 0
         },
-        description: `Segment from ${originStreet} towards ${destinationStreet}`
+        description: `Segment from ${originStreet} towards ${destinationStreet}`,
+        intersectionType,
+        turnType,
       });
     }
 
@@ -268,6 +308,8 @@ function App() {
             heightRestriction: 0
           },
           description: step.instructions.replace(/<[^>]*>/g, " "),
+          intersectionType: step.instructions.toLowerCase().includes('traffic light') ? 'traffic_light' : (step.instructions.toLowerCase().includes('stop sign') ? 'stop_sign' : 'none'),
+          turnType: step.instructions.toLowerCase().includes('turn left') ? 'left' : (step.instructions.toLowerCase().includes('turn right') ? 'right' : (step.instructions.toLowerCase().includes('continue straight') ? 'straight' : 'none')),
         });
       });
     });
