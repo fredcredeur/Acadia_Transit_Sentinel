@@ -438,7 +438,6 @@ function App() {
           <div className="space-y-8">
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
               <div className="xl:col-span-1 space-y-6">
-                <VehicleForm vehicle={vehicle} onChange={setVehicle} />
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="p-2 bg-green-100 dark:bg-green-900/50 rounded-lg">
@@ -477,11 +476,11 @@ function App() {
                     vehicle={vehicle}
                     onRouteSelect={setSelectedRouteId}
                     onRouteUpdate={handleRouteUpdate}
-                    className="h-[500px] rounded-lg shadow-md"
+                    className="h-[600px] rounded-lg shadow-md"
                     initialCenter={initialCenter}
                   />
                 ) : (
-                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-[500px] flex items-center justify-center">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-[600px] flex items-center justify-center">
                     <p className="text-gray-500 dark:text-gray-400">Enter origin and destination to analyze routes.</p>
                   </div>
                 )}
