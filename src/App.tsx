@@ -146,10 +146,20 @@ function App() {
       if (useRealData) {
         const googleMapsService = GoogleMapsService.getInstance();
         await googleMapsService.initialize();
-        const waypoints = stopsToUse.map(s => s.address);
+        const waypoints = stopsToUse.map(s =>
+          s.lat !== undefined && s.lng !== undefined
+            ? `${s.lat},${s.lng}`
+            : s.address
+        );
         const directionsResult = await googleMapsService.getRoutes({
-          origin: planningOrigin,
-          destination: planningDestination,
+          origin:
+            planningOriginCoords !== undefined
+              ? `${planningOriginCoords.lat},${planningOriginCoords.lng}`
+              : planningOrigin,
+          destination:
+            planningDestinationCoords !== undefined
+              ? `${planningDestinationCoords.lat},${planningDestinationCoords.lng}`
+              : planningDestination,
           waypoints
         });
         analyzedRoutes = directionsResult.routes.map((gRoute, index) => {
