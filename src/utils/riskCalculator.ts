@@ -60,7 +60,8 @@ export class RiskCalculator {
     for (let i = 0; i < seed.length; i++) {
       const char = seed.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
+      // Force hash to 32-bit integer
+      hash |= 0;
     }
     
     // Normalize to 0-1 range, then scale to min-max
