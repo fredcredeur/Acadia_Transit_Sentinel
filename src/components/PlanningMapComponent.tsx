@@ -220,6 +220,12 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
           }
 
           if (stopLocation) {
+            const distanceToOrigin = googleMapsService.calculateDistance(stopLocation, originLocation);
+            const distanceToDestination = googleMapsService.calculateDistance(stopLocation, destinationLocation);
+            if (distanceToOrigin < 20 || distanceToDestination < 20) {
+              stopLocation = new google.maps.LatLng(stopLocation.lat() + 0.00015, stopLocation.lng() + 0.00015);
+            }
+
             const stopMarker = new google.maps.Marker({
               position: stopLocation,
               map: map,
@@ -243,6 +249,17 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
         }
       }
       setStopMarkers(newStopMarkers);
+
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend(originLocation);
+      bounds.extend(destinationLocation);
+      newStopMarkers.forEach(m => {
+        const pos = m.getPosition();
+        if (pos) bounds.extend(pos);
+      });
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds);
+      }
 
       // If it's a loop route, add a visual indicator
       if (isLoop) {
