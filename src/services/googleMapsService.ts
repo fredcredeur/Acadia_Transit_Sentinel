@@ -389,7 +389,7 @@ private filterRoutesByConstraints(routes: google.maps.DirectionsRoute[], constra
   return routes.filter(route => {
     for (const leg of route.legs) {
       for (const step of leg.steps) {
-        const instr = step.instructions.toLowerCase();
+        const instr = step.instructions.replace(/<[^>]*>/g, ' ').toLowerCase();
         const maneuver = (step as any).maneuver?.toLowerCase() || '';
         const hasUTurn =
           instr.includes('u-turn') ||
