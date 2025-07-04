@@ -475,9 +475,9 @@ function App() {
                     selectedRouteId={selectedRouteId}
                     vehicle={vehicle}
                     onRouteSelect={setSelectedRouteId}
-                    onRouteUpdate={handleRouteUpdate}
                     className="h-[600px] rounded-lg shadow-md"
                     initialCenter={initialCenter}
+                    allowEditing={false}
                   />
                 ) : (
                   <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-[600px] flex items-center justify-center">

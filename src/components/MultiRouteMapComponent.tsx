@@ -12,6 +12,7 @@ interface MultiRouteMapComponentProps {
   className?: string;
   initialCenter?: { lat: number; lng: number };
   onRouteUpdate?: (routeId: string, newWaypoints: string[]) => void;
+  allowEditing?: boolean;
 }
 
 export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
@@ -21,7 +22,8 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
   onRouteSelect,
   className = '',
   initialCenter = { lat: 39.8283, lng: -98.5795 },
-  onRouteUpdate
+  onRouteUpdate,
+  allowEditing = false
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -223,7 +225,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
     const originMarker = new google.maps.Marker({
       position: new google.maps.LatLng(originLat, originLng),
       map: map,
-      draggable: true,
+      draggable: allowEditing,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 12,
@@ -240,7 +242,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
     const destinationMarker = new google.maps.Marker({
       position: new google.maps.LatLng(destLat, destLng),
       map: map,
-      draggable: true,
+      draggable: allowEditing,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 12,
@@ -255,33 +257,35 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
 
     newMarkers.push(originMarker, destinationMarker);
 
-    // Add drag listeners for origin
-    originMarker.addListener('dragstart', () => {
-      setIsDragging(true);
-      setDraggedPointType('waypoint');
-    });
+    if (allowEditing) {
+      // Add drag listeners for origin
+      originMarker.addListener('dragstart', () => {
+        setIsDragging(true);
+        setDraggedPointType('waypoint');
+      });
 
-    originMarker.addListener('dragend', async (event: google.maps.MapMouseEvent) => {
-      if (event.latLng) {
-        await handleOriginDestinationDrag(route, 'origin', event.latLng);
-      }
-      setIsDragging(false);
-      setDraggedPointType(null);
-    });
+      originMarker.addListener('dragend', async (event: google.maps.MapMouseEvent) => {
+        if (event.latLng) {
+          await handleOriginDestinationDrag(route, 'origin', event.latLng);
+        }
+        setIsDragging(false);
+        setDraggedPointType(null);
+      });
 
-    // Add drag listeners for destination
-    destinationMarker.addListener('dragstart', () => {
-      setIsDragging(true);
-      setDraggedPointType('waypoint');
-    });
+      // Add drag listeners for destination
+      destinationMarker.addListener('dragstart', () => {
+        setIsDragging(true);
+        setDraggedPointType('waypoint');
+      });
 
-    destinationMarker.addListener('dragend', async (event: google.maps.MapMouseEvent) => {
-      if (event.latLng) {
-        await handleOriginDestinationDrag(route, 'destination', event.latLng);
-      }
-      setIsDragging(false);
-      setDraggedPointType(null);
-    });
+      destinationMarker.addListener('dragend', async (event: google.maps.MapMouseEvent) => {
+        if (event.latLng) {
+          await handleOriginDestinationDrag(route, 'destination', event.latLng);
+        }
+        setIsDragging(false);
+        setDraggedPointType(null);
+      });
+    }
 
     setWaypointMarkers(prev => [...prev, ...newMarkers]);
   };
@@ -327,7 +331,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       const marker = new google.maps.Marker({
         position: position,
         map: map,
-        draggable: true,
+        draggable: allowEditing,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           scale: 8,
@@ -342,35 +346,37 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
 
       newMarkers.push(marker);
 
-      // Add drag listeners
-      marker.addListener('dragstart', () => {
-        setIsDragging(true);
-        setDraggedPointType('waypoint');
-        marker.setIcon({
-          ...(marker.getIcon() as google.maps.Symbol),
-          fillOpacity: 0.7,
-          scale: 10
+      if (allowEditing) {
+        // Add drag listeners
+        marker.addListener('dragstart', () => {
+          setIsDragging(true);
+          setDraggedPointType('waypoint');
+          marker.setIcon({
+            ...(marker.getIcon() as google.maps.Symbol),
+            fillOpacity: 0.7,
+            scale: 10
+          });
         });
-      });
 
-      marker.addListener('dragend', async (event: google.maps.MapMouseEvent) => {
-        setIsDragging(false);
-        setDraggedPointType(null);
-        
-        if (event.latLng) {
-          await handleWaypointDrag(route, index, event.latLng);
-        }
-        
-        // Reset marker appearance
-        marker.setIcon({
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: routeColor,
-          fillOpacity: 0.9,
-          strokeColor: '#FFFFFF',
-          strokeWeight: 2
+        marker.addListener('dragend', async (event: google.maps.MapMouseEvent) => {
+          setIsDragging(false);
+          setDraggedPointType(null);
+
+          if (event.latLng) {
+            await handleWaypointDrag(route, index, event.latLng);
+          }
+
+          // Reset marker appearance
+          marker.setIcon({
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: routeColor,
+            fillOpacity: 0.9,
+            strokeColor: '#FFFFFF',
+            strokeWeight: 2
+          });
         });
-      });
+      }
 
       // Add info window
       const infoWindow = new google.maps.InfoWindow({
@@ -463,7 +469,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
         const marker = new google.maps.Marker({
           position: new google.maps.LatLng(segment.startLat, segment.startLng),
           map: map,
-          draggable: true,
+          draggable: allowEditing,
           icon: {
             path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
             scale: 8,
@@ -478,36 +484,38 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
 
         newCriticalPointMarkers.push(marker);
 
-        // Add drag start listener
-        marker.addListener('dragstart', () => {
-          setIsDragging(true);
-          setDraggedPointType('critical');
-          marker.setIcon({
-            ...(marker.getIcon() as google.maps.Symbol),
-            fillOpacity: 0.7,
-            scale: 10
+        if (allowEditing) {
+          // Add drag start listener
+          marker.addListener('dragstart', () => {
+            setIsDragging(true);
+            setDraggedPointType('critical');
+            marker.setIcon({
+              ...(marker.getIcon() as google.maps.Symbol),
+              fillOpacity: 0.7,
+              scale: 10
+            });
           });
-        });
 
-        // Add drag end listener to update route
-        marker.addListener('dragend', async (event: google.maps.MapMouseEvent) => {
-          setIsDragging(false);
-          setDraggedPointType(null);
-          
-          if (event.latLng) {
-            await handleCriticalPointDrag(route, pointIndex, event.latLng);
-          }
-          
-          // Reset marker appearance
-          marker.setIcon({
-            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 8,
-            fillColor: point.riskLevel === 'critical' ? '#dc2626' : '#f59e0b',
-            fillOpacity: 1,
-            strokeColor: '#FFFFFF',
-            strokeWeight: 3
+          // Add drag end listener to update route
+          marker.addListener('dragend', async (event: google.maps.MapMouseEvent) => {
+            setIsDragging(false);
+            setDraggedPointType(null);
+
+            if (event.latLng) {
+              await handleCriticalPointDrag(route, pointIndex, event.latLng);
+            }
+
+            // Reset marker appearance
+            marker.setIcon({
+              path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+              scale: 8,
+              fillColor: point.riskLevel === 'critical' ? '#dc2626' : '#f59e0b',
+              fillOpacity: 1,
+              strokeColor: '#FFFFFF',
+              strokeWeight: 3
+            });
           });
-        });
+        }
 
         // Add info window for critical points
         const infoWindow = new google.maps.InfoWindow({
@@ -738,7 +746,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       )}
 
       {/* Dragging Indicator */}
-      {isDragging && (
+      {allowEditing && isDragging && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-20">
           <div className="flex items-center gap-2">
             <div className="animate-pulse w-2 h-2 bg-white rounded-full"></div>
@@ -752,7 +760,7 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       )}
 
       {/* Instructions Panel */}
-      {!isDragging && routes.length > 0 && (
+      {allowEditing && !isDragging && routes.length > 0 && (
         <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 max-w-xs">
           <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
             🚌 Route Fine-Tuning
