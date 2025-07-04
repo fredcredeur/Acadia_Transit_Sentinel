@@ -116,6 +116,42 @@ export class GoogleMapsService {
     return limitedWaypoints;
   }
 
+  /**
+   * Filter routes that contain U-turns or other problematic maneuvers for large vehicles.
+   */
+  private filterRoutesForLargeVehicles(routes: google.maps.DirectionsRoute[], vehicle: Vehicle): google.maps.DirectionsRoute[] {
+    const isLarge = vehicle.length >= 30;
+    if (!isLarge) return routes;
+
+    const filtered = routes.filter(route => this.countUTurns(route) === 0);
+    if (filtered.length > 0) return filtered;
+    // fallback - return least number of U-turns
+    let minRoute = routes[0];
+    let min = this.countUTurns(minRoute);
+    for (const r of routes.slice(1)) {
+      const c = this.countUTurns(r);
+      if (c < min) {
+        min = c;
+        minRoute = r;
+      }
+    }
+    return [minRoute];
+  }
+
+  private countUTurns(route: google.maps.DirectionsRoute): number {
+    let count = 0;
+    route.legs.forEach(leg => {
+      leg.steps.forEach(step => {
+        const instr = step.instructions.replace(/<[^>]*>/g, ' ').toLowerCase();
+        const maneuver = (step as any).maneuver?.toLowerCase() || '';
+        if (instr.includes('u-turn') || instr.includes('u turn') || instr.includes('turn around') || maneuver.includes('uturn')) {
+          count += 1;
+        }
+      });
+    });
+    return count;
+  }
+
   public async getRoutes(request: {
     origin: string;
     destination: string;
@@ -124,6 +160,7 @@ export class GoogleMapsService {
     avoidHighways?: boolean;
     avoidTolls?: boolean;
     departureTime?: Date;
+    vehicle?: Vehicle;
   }): Promise<google.maps.DirectionsResult> {
     if (!this.isInitialized()) {
       throw new Error('Google Maps service not initialized. Please ensure the API key is configured correctly.');
@@ -168,6 +205,9 @@ export class GoogleMapsService {
       return new Promise((resolve, reject) => {
         this.directionsService!.route(directionsRequest, (result, status) => {
           if (status === google.maps.DirectionsStatus.OK && result) {
+            if (request.vehicle && request.vehicle.length >= 30) {
+              result.routes = this.filterRoutesForLargeVehicles(result.routes, request.vehicle);
+            }
             resolve(result);
           } else {
             let errorMessage = `Directions request failed: ${status}`;
@@ -301,6 +341,9 @@ export class GoogleMapsService {
   }): Promise<google.maps.DirectionsResult> {
     const vehicleClass = VehicleClassificationService.classifyVehicle(request.vehicle);
     const constraints = VehicleClassificationService.getRoutingConstraints(vehicleClass);
+    if (request.vehicle.length >= 30) {
+      return this.getLargeVehicleRoutes(request);
+    }
     if (constraints.preferLoops && request.waypoints && request.waypoints.length > 0) {
       return this.getBlockRoutingWithStops(request, vehicleClass);
     }
@@ -342,7 +385,7 @@ export class GoogleMapsService {
     return null;
   }
 
-  private async getConstrainedRoutes(request: { origin: string; destination: string; waypoints?: string[]; avoidHighways?: boolean; avoidTolls?: boolean }, constraints: RoutingConstraints): Promise<google.maps.DirectionsResult> {
+  private async getConstrainedRoutes(request: { origin: string; destination: string; waypoints?: string[]; avoidHighways?: boolean; avoidTolls?: boolean; vehicle?: Vehicle }, constraints: RoutingConstraints): Promise<google.maps.DirectionsResult> {
     const waypoints: google.maps.DirectionsWaypoint[] = [];
     if (request.waypoints) {
       for (const wp of request.waypoints) {
@@ -371,7 +414,10 @@ export class GoogleMapsService {
   
   this.directionsService.route(dr, (result, status) => {
     if (status === google.maps.DirectionsStatus.OK && result) {
-      const filtered = this.filterRoutesByConstraints(result.routes, constraints);
+      let filtered = this.filterRoutesByConstraints(result.routes, constraints);
+      if (request.vehicle && request.vehicle.length >= 30) {
+        filtered = this.filterRoutesForLargeVehicles(filtered, request.vehicle);
+      }
       if (filtered.length) {
         result.routes = filtered;
         resolve(result);
@@ -384,6 +430,29 @@ export class GoogleMapsService {
   });
   });
 }
+
+  /**
+   * Public helper to request routes for large vehicles with automatic filtering.
+   */
+  public async getLargeVehicleRoutes(request: {
+    origin: string;
+    destination: string;
+    waypoints?: string[];
+    vehicle: Vehicle;
+    avoidHighways?: boolean;
+    avoidTolls?: boolean;
+  }): Promise<google.maps.DirectionsResult> {
+    const result = await this.getRoutes({
+      origin: request.origin,
+      destination: request.destination,
+      waypoints: request.waypoints,
+      travelMode: google.maps.TravelMode.DRIVING,
+      avoidHighways: request.avoidHighways,
+      avoidTolls: request.avoidTolls,
+      vehicle: request.vehicle
+    });
+    return result;
+  }
 
 private filterRoutesByConstraints(routes: google.maps.DirectionsRoute[], constraints: RoutingConstraints): google.maps.DirectionsRoute[] {
   return routes.filter(route => {
