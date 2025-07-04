@@ -140,7 +140,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
 
     // Proceed with route planning
     if (origin.trim() && destination.trim() && !isLoading) {
-      let finalStops = stops.filter(stop => stop.address.trim());
+      const finalStops = stops.filter(stop => stop.address.trim());
       onRouteRequest(origin.trim(), destination.trim(), finalStops.length > 0 ? finalStops : undefined, localIsLoop);
     }
   };

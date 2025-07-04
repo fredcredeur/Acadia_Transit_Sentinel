@@ -155,8 +155,8 @@ class LargeVehicleRoutingAlgorithm {
   ): number {
     const config = this.getLargeVehicleRoutingConfig(vehicle);
     let totalScore = 0;
-    let totalDistance = route.totalDistance;
-    let totalTime = route.estimatedTime;
+    const totalDistance = route.totalDistance;
+    const totalTime = route.estimatedTime;
     
     // Score each segment
     route.segments.forEach(segment => {
