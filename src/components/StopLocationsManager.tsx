@@ -24,7 +24,9 @@ export const StopLocationsManager: React.FC<StopLocationsManagerProps> = ({
       id: `stop-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       address: '',
       order: stops.length,
-      estimatedStopTime: 15
+      estimatedStopTime: 15,
+      lat: undefined,
+      lng: undefined,
     };
     onStopsChange([...stops, newStop]);
   };
@@ -218,7 +220,13 @@ export const StopLocationsManager: React.FC<StopLocationsManagerProps> = ({
                         onChange={(address) => updateStop(stop.id, { address })}
                         placeholder="Enter stop address"
                         disabled={disabled}
-                        onLocationSelect={(location) => updateStop(stop.id, { address: location.address })}
+                        onLocationSelect={(location) =>
+                          updateStop(stop.id, {
+                            address: location.address,
+                            lat: location.lat,
+                            lng: location.lng,
+                          })
+                        }
                       />
                     </div>
                     

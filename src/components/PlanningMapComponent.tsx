@@ -9,9 +9,17 @@ interface PlanningMapComponentProps {
   destination: string;
   stops?: StopLocation[];
   isReady?: boolean;
-  onMapUpdate?: (origin: string, destination: string, stops: StopLocation[]) => void;
+  onMapUpdate?: (
+    origin: string,
+    destination: string,
+    stops: StopLocation[],
+    originCoords?: { lat: number; lng: number },
+    destinationCoords?: { lat: number; lng: number }
+  ) => void;
   initialCenter?: { lat: number; lng: number };
   isLoop?: boolean;
+  originCoords?: { lat: number; lng: number };
+  destinationCoords?: { lat: number; lng: number };
 }
 
 export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
@@ -22,7 +30,9 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
   isReady = false,
   onMapUpdate,
   initialCenter = { lat: 30.2241, lng: -92.0198 }, // Default to Lafayette, LA
-  isLoop = false
+  isLoop = false,
+  originCoords,
+  destinationCoords
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -127,19 +137,28 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
         setRoutePolyline(null);
       }
 
-      // Geocode addresses
-      const originResults = await googleMapsService.geocodeAddress(origin);
-      const destinationResults = await googleMapsService.geocodeAddress(destination);
+      let originLocation: google.maps.LatLng;
+      let destinationLocation: google.maps.LatLng;
 
-      if (originResults.length === 0) {
-        throw new Error(`Could not find location for origin: ${origin}`);
-      }
-      if (destinationResults.length === 0) {
-        throw new Error(`Could not find location for destination: ${destination}`);
+      if (originCoords) {
+        originLocation = new google.maps.LatLng(originCoords.lat, originCoords.lng);
+      } else {
+        const originResults = await googleMapsService.geocodeAddress(origin);
+        if (originResults.length === 0) {
+          throw new Error(`Could not find location for origin: ${origin}`);
+        }
+        originLocation = originResults[0].geometry.location;
       }
 
-      const originLocation = originResults[0].geometry.location;
-      const destinationLocation = destinationResults[0].geometry.location;
+      if (destinationCoords) {
+        destinationLocation = new google.maps.LatLng(destinationCoords.lat, destinationCoords.lng);
+      } else {
+        const destinationResults = await googleMapsService.geocodeAddress(destination);
+        if (destinationResults.length === 0) {
+          throw new Error(`Could not find location for destination: ${destination}`);
+        }
+        destinationLocation = destinationResults[0].geometry.location;
+      }
 
       // Create origin marker
       const newOriginMarker = new google.maps.Marker({
@@ -184,9 +203,21 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       const newStopMarkers: google.maps.Marker[] = [];
       for (const stop of stops) {
         try {
-          const stopResults = await googleMapsService.geocodeAddress(stop.address);
-          if (stopResults.length > 0) {
-            const stopLocation = stopResults[0].geometry.location;
+          if (!stop.address.trim() && stop.lat === undefined && stop.lng === undefined) {
+            continue; // skip empty stops
+          }
+
+          let stopLocation: google.maps.LatLng | null = null;
+          if (stop.lat !== undefined && stop.lng !== undefined) {
+            stopLocation = new google.maps.LatLng(stop.lat, stop.lng);
+          } else if (stop.address.trim()) {
+            const stopResults = await googleMapsService.geocodeAddress(stop.address);
+            if (stopResults.length > 0) {
+              stopLocation = stopResults[0].geometry.location;
+            }
+          }
+
+          if (stopLocation) {
             const stopMarker = new google.maps.Marker({
               position: stopLocation,
               map: map,
@@ -201,7 +232,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
               },
               draggable: true
             });
-            
+
             stopMarker.addListener('dragend', () => handleStopMarkerDrag(stopMarker, stop.id));
             newStopMarkers.push(stopMarker);
           }
@@ -238,7 +269,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       console.error('Failed to update map with addresses:', error);
       setError(error instanceof Error ? error.message : 'Failed to update map');
     }
-  }, [map, origin, destination, stops, isLoop, originMarker, destinationMarker, stopMarkers, directionsRenderer, routePolyline, loopMarker]);
+  }, [map, origin, destination, stops, isLoop, originMarker, destinationMarker, stopMarkers, directionsRenderer, routePolyline, loopMarker, originCoords, destinationCoords]);
 
   const drawRoutePath = useCallback(async (
     origin: google.maps.LatLng, 
@@ -266,12 +297,16 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       // Add stops as waypoints
       for (const stop of stops) {
         try {
-          const stopResults = await GoogleMapsService.getInstance().geocodeAddress(stop.address);
-          if (stopResults.length > 0) {
-            waypoints.push({
-              location: stopResults[0].geometry.location,
-              stopover: true
-            });
+          if (!stop.address.trim() && stop.lat === undefined && stop.lng === undefined) {
+            continue;
+          }
+          if (stop.lat !== undefined && stop.lng !== undefined) {
+            waypoints.push({ location: new google.maps.LatLng(stop.lat, stop.lng), stopover: true });
+          } else if (stop.address.trim()) {
+            const stopResults = await GoogleMapsService.getInstance().geocodeAddress(stop.address);
+            if (stopResults.length > 0) {
+              waypoints.push({ location: stopResults[0].geometry.location, stopover: true });
+            }
           }
         } catch (error) {
           console.warn(`Failed to geocode stop: ${stop.address}`, error);
@@ -416,7 +451,16 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
           
           // Notify parent
           if (onMapUpdate) {
-            onMapUpdate(address, destination, stops);
+            onMapUpdate(
+              address,
+              destination,
+              stops,
+              { lat: position.lat(), lng: position.lng() },
+              destinationMarker.getPosition() ? {
+                lat: destinationMarker.getPosition()!.lat(),
+                lng: destinationMarker.getPosition()!.lng(),
+              } : undefined
+            );
           }
         } else if (type === 'destination' && originMarker && destinationMarker) {
           // Redraw route
@@ -427,7 +471,16 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
           
           // Notify parent
           if (onMapUpdate) {
-            onMapUpdate(origin, address, stops);
+            onMapUpdate(
+              origin,
+              address,
+              stops,
+              originMarker.getPosition() ? {
+                lat: originMarker.getPosition()!.lat(),
+                lng: originMarker.getPosition()!.lng(),
+              } : undefined,
+              { lat: position.lat(), lng: position.lng() }
+            );
           }
         }
       }
@@ -456,8 +509,10 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
         const address = results[0].formatted_address;
         
         // Update stops
-        const updatedStops = stops.map(stop => 
-          stop.id === stopId ? { ...stop, address } : stop
+        const updatedStops = stops.map(stop =>
+          stop.id === stopId
+            ? { ...stop, address, lat: position.lat(), lng: position.lng() }
+            : stop
         );
         
         // Redraw route
@@ -471,7 +526,19 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
         
         // Notify parent
         if (onMapUpdate) {
-          onMapUpdate(origin, destination, updatedStops);
+          onMapUpdate(
+            origin,
+            destination,
+            updatedStops,
+            originMarker?.getPosition() ? {
+              lat: originMarker!.getPosition()!.lat(),
+              lng: originMarker!.getPosition()!.lng(),
+            } : undefined,
+            destinationMarker?.getPosition() ? {
+              lat: destinationMarker!.getPosition()!.lat(),
+              lng: destinationMarker!.getPosition()!.lng(),
+            } : undefined
+          );
         }
       }
     } catch (error) {
