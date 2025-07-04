@@ -12,7 +12,7 @@ export const CriticalPoints: React.FC<CriticalPointsProps> = ({ route, vehicle }
   // If no route is provided, render a placeholder
   if (!route) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 h-96 flex items-center justify-center">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300 min-h-[384px] flex items-center justify-center">
         <p className="text-gray-500 dark:text-gray-400">No route selected. Analyze a route to see critical points.</p>
       </div>
     );
