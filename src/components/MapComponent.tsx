@@ -5,7 +5,7 @@ import { LatLngCoordinates } from '../types'; // Import LatLngCoordinates
 
 export function MapComponent() {
   const mapRef = useRef<HTMLDivElement>(null);
-  const { setMap, selectedRoute, riskFactors } = useMapContext();
+  const { map, setMap, selectedRoute, riskFactors } = useMapContext();
   const markersRef = useRef<google.maps.Marker[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const riskMarkersRef = useRef<google.maps.Marker[]>([]);
@@ -45,7 +45,6 @@ export function MapComponent() {
 
   // Handle selected route changes
   useEffect(() => {
-    const { map } = useMapContext();
     
     if (!map || !selectedRoute) {
       // Clear existing route visualization
@@ -157,7 +156,6 @@ export function MapComponent() {
 
   // Handle risk factors
   useEffect(() => {
-    const { map } = useMapContext();
     if (!map) return;
     
     // Clear previous risk markers
