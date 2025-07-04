@@ -15,6 +15,7 @@ import { LargeVehicleAnalysisPanel } from './components/LargeVehicleComponents';
 import { PlanningMapComponent } from './components/PlanningMapComponent';
 import { CriticalPoints } from './components/CriticalPoints';
 import { RouteMap } from './components/RouteMap';
+import { RiskCalculator } from './utils/riskCalculator';
 
 function App() {
   const { isDarkMode, toggleDarkMode } = useDarkMode();

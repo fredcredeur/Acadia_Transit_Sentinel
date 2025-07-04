@@ -593,6 +593,7 @@ export class RiskCalculator {
       trafficRisk: number;
       roadContextRisk: number;
       intersectionRisk: number;
+      uTurnRisk: number;
     },
     vehicle: Vehicle,
     context: RoadContext,
