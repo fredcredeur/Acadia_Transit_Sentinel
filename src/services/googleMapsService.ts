@@ -390,7 +390,8 @@ private filterRoutesByConstraints(routes: google.maps.DirectionsRoute[], constra
     for (const leg of route.legs) {
       for (const step of leg.steps) {
         const instr = step.instructions.toLowerCase();
-        if (constraints.avoidUTurns && instr.includes('u-turn')) return false;
+        const hasUTurn = instr.includes('u-turn') || instr.includes('u turn') || instr.includes('turn around');
+        if (constraints.avoidUTurns && hasUTurn) return false;
         if (constraints.avoidSharpTurns && instr.includes('sharp turn')) return false;
         if (constraints.avoidResidential && instr.includes('residential')) return false;
       }
