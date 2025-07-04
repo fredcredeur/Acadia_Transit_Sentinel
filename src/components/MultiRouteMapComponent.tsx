@@ -705,21 +705,19 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
       {/* Enhanced Map Legend */}
       {!isLoading && !error && (
         <div className="absolute bottom-4 left-4 bg-white dark:bg-gray-800 p-3 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Interactive Route Map
-          </div>
+          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Route Map</div>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-              <span className="text-xs text-gray-600 dark:text-gray-400">Origin (Draggable)</span>
+              <span className="text-xs text-gray-600 dark:text-gray-400">Origin{allowEditing ? ' (Draggable)' : ''}</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-              <span className="text-xs text-gray-600 dark:text-gray-400">Destination (Draggable)</span>
+              <span className="text-xs text-gray-600 dark:text-gray-400">Destination{allowEditing ? ' (Draggable)' : ''}</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-              <span className="text-xs text-gray-600 dark:text-gray-400">Waypoints (Draggable)</span>
+              <span className="text-xs text-gray-600 dark:text-gray-400">Waypoints{allowEditing ? ' (Draggable)' : ''}</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-1 bg-amber-500 rounded"></div>
@@ -731,16 +729,18 @@ export const MultiRouteMapComponent: React.FC<MultiRouteMapComponentProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 bg-red-600 rounded-full"></div>
-              <span className="text-xs text-gray-600 dark:text-gray-400">Critical Point (Draggable)</span>
+              <span className="text-xs text-gray-600 dark:text-gray-400">Critical Point{allowEditing ? ' (Draggable)' : ''}</span>
             </div>
           </div>
           <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              <strong>Drag</strong> any point to fine-tune the route
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              <strong>Drag directly onto roads</strong> for precise positioning
-            </p>
+            {allowEditing ? (
+              <>
+                <p className="text-xs text-gray-500 dark:text-gray-400"><strong>Drag</strong> any point to fine-tune the route</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400"><strong>Drag directly onto roads</strong> for precise positioning</p>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500 dark:text-gray-400">Route editing disabled</p>
+            )}
           </div>
         </div>
       )}
