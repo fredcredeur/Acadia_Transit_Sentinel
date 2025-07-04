@@ -157,6 +157,8 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
 
       if (originCoords) {
         originLocation = new google.maps.LatLng(originCoords.lat, originCoords.lng);
+      } else if (originMarker && originMarker.getPosition()) {
+        originLocation = originMarker.getPosition()!;
       } else {
         const originResults = await googleMapsService.geocodeAddress(origin);
         if (originResults.length === 0) {
@@ -167,6 +169,8 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
 
       if (destinationCoords) {
         destinationLocation = new google.maps.LatLng(destinationCoords.lat, destinationCoords.lng);
+      } else if (destinationMarker && destinationMarker.getPosition()) {
+        destinationLocation = destinationMarker.getPosition()!;
       } else {
         const destinationResults = await googleMapsService.geocodeAddress(destination);
         if (destinationResults.length === 0) {
