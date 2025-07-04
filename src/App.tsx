@@ -53,6 +53,8 @@ function App() {
   const [planningOriginCoords, setPlanningOriginCoords] = useState<{ lat: number; lng: number } | undefined>(undefined);
   const [planningDestinationCoords, setPlanningDestinationCoords] = useState<{ lat: number; lng: number } | undefined>(undefined);
 
+  const [routeFilterWarnings, setRouteFilterWarnings] = useState<string[]>([]);
+
   const selectedRoute = routes.find(route => route.id === selectedRouteId);
 
   const generateLargeVehicleAnalysis = (vehicle: Vehicle, routes: Route[]) => {
@@ -131,6 +133,8 @@ function App() {
     setIsAnalyzing(true);
     setError(null);
     try {
+      setRouteFilterWarnings([]);
+      setRouteFilterWarnings([]);
       let stopsToUse = planningStops || [];
       if (isLoop && planningOrigin) {
         const loopStop: StopLocation = {
@@ -160,13 +164,28 @@ function App() {
             planningDestinationCoords !== undefined
               ? `${planningDestinationCoords.lat},${planningDestinationCoords.lng}`
               : planningDestination,
-          waypoints
+          waypoints,
+          vehicle
         });
         analyzedRoutes = directionsResult.routes.map((gRoute, index) => {
           const appRoute = transformGoogleRouteToAppRoute(gRoute, index, stopsToUse);
           const { route: analyzed } = RouteAnalysisService.analyzeRouteRisk(appRoute, vehicle);
           return analyzed;
         });
+        if (vehicle.length >= 30) {
+          const before = analyzedRoutes.length;
+          analyzedRoutes = analyzedRoutes.filter(route => {
+            const suitability = RiskCalculator.isRouteSuitableForLargeVehicle(route, vehicle);
+            if (!suitability.suitable) {
+              setRouteFilterWarnings(prev => [...prev, `Route "${route.name}" filtered: ${suitability.prohibitedManeuvers.join(', ')}`]);
+              return false;
+            }
+            return true;
+          });
+          if (before > analyzedRoutes.length) {
+            setRouteFilterWarnings(prev => [...prev, `${before - analyzedRoutes.length} route(s) filtered due to prohibited maneuvers`]);
+          }
+        }
         analyzedRoutes.sort((a, b) => a.overallRisk - b.overallRisk);
         analyzedRoutes = analyzedRoutes.slice(0, 3);
       }
@@ -287,13 +306,28 @@ function App() {
       const directionsResult = await googleMapsService.getRoutes({
         origin,
         destination,
-        waypoints
+        waypoints,
+        vehicle
       });
       let analyzedRoutes = directionsResult.routes.map((gRoute, index) => {
         const appRoute = transformGoogleRouteToAppRoute(gRoute, index, stopsToUse);
         const { route: analyzed } = RouteAnalysisService.analyzeRouteRisk(appRoute, vehicle);
         return analyzed;
       });
+      if (vehicle.length >= 30) {
+        const before = analyzedRoutes.length;
+        analyzedRoutes = analyzedRoutes.filter(route => {
+          const suitability = RiskCalculator.isRouteSuitableForLargeVehicle(route, vehicle);
+          if (!suitability.suitable) {
+            setRouteFilterWarnings(prev => [...prev, `Updated route "${route.name}" filtered: ${suitability.prohibitedManeuvers.join(', ')}`]);
+            return false;
+          }
+          return true;
+        });
+        if (before > analyzedRoutes.length) {
+          setRouteFilterWarnings(prev => [...prev, `${before - analyzedRoutes.length} updated route(s) filtered due to prohibited maneuvers`]);
+        }
+      }
       analyzedRoutes.sort((a, b) => a.overallRisk - b.overallRisk);
       analyzedRoutes = analyzedRoutes.slice(0, 3);
       const result = {
@@ -387,6 +421,19 @@ function App() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
               <span className="text-amber-800 dark:text-amber-300">{error}</span>
+            </div>
+          </div>
+        )}
+
+        {routeFilterWarnings.length > 0 && (
+          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-4 transition-colors duration-300">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5" />
+              <ul className="text-sm text-red-800 dark:text-red-300 space-y-1">
+                {routeFilterWarnings.map((w, i) => (
+                  <li key={i}>• {w}</li>
+                ))}
+              </ul>
             </div>
           </div>
         )}

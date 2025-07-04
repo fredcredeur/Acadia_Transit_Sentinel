@@ -8,7 +8,8 @@ export interface RoadContext {
   schoolZone: boolean;
   commercialLoading: boolean;
   designatedTruckRoute: boolean;
-  turnDirection?: 'left' | 'right' | 'straight';
+  turnDirection?: 'left' | 'right' | 'straight' | 'u_turn';
+  hasUTurn: boolean;
 }
 
 export interface TurnAnalysis {
@@ -26,11 +27,13 @@ export interface EnhancedRiskBreakdown {
   trafficRisk: number;
   roadContextRisk: number;
   intersectionRisk: number;
+  uTurnRisk: number;
   overallRisk: number;
   roadContext: RoadContext;
   primaryConcerns: string[];
   recommendations: string[];
   riskMitigators: string[];
+  prohibitedManeuvers?: string[];
 }
 
 export class RiskCalculator {
@@ -41,7 +44,8 @@ export class RiskCalculator {
     infrastructure: 0.20,       
     traffic: 0.10, // Reduced - traffic is manageable for large vehicles             
     roadContext: 0.15,
-    intersection: 0.15 // Critical for bus operations
+    intersection: 0.15, // Critical for bus operations
+    uTurn: 0.15
   };
 
   // 🚌 BUS-SPECIFIC WEIGHTS (prioritize intersection safety)
@@ -51,7 +55,8 @@ export class RiskCalculator {
     infrastructure: 0.15,       
     traffic: 0.05, // Lower - buses expect some traffic             
     roadContext: 0.20, // Higher - road type is critical for buses
-    intersection: 0.20 // Highest - intersection type is crucial for buses
+    intersection: 0.20, // Highest - intersection type is crucial for buses
+    uTurn: 0.20
   };
 
   // 🔧 DETERMINISTIC SEED GENERATOR - Creates consistent "random" values based on input
@@ -67,6 +72,15 @@ export class RiskCalculator {
     // Normalize to 0-1 range, then scale to min-max
     const normalized = Math.abs(hash) / 2147483647; // Max 32-bit int
     return min + (normalized * (max - min));
+  }
+
+  private static detectUTurnFromSegment(segment: RouteSegment): boolean {
+    const streetName = segment.streetName.toLowerCase();
+    const description = segment.description.toLowerCase();
+    return description.includes('u-turn') ||
+           description.includes('u turn') ||
+           description.includes('turn around') ||
+           streetName.includes('u-turn');
   }
 
   // 🔧 CONSISTENT RISK FACTORS - Generate deterministic risk factors based on segment characteristics
@@ -172,6 +186,7 @@ export class RiskCalculator {
     const trafficRisk = this.calculateIntelligentTrafficRisk(factors, context);
     const roadContextRisk = this.calculateRoadContextRisk(vehicle, context);
     const intersectionRisk = this.calculateIntersectionRisk(segment, vehicle, context, nextSegmentContext);
+    const uTurnRisk = this.calculateUTurnRisk(segment, vehicle, context);
     
     // Apply weights with context modifiers
     const weightedRisk = 
@@ -180,12 +195,13 @@ export class RiskCalculator {
       (infrastructureRisk * weights.infrastructure) +
       (trafficRisk * weights.traffic) +
       (roadContextRisk * weights.roadContext) +
-      (intersectionRisk * weights.intersection);
+      (intersectionRisk * weights.intersection) +
+      (uTurnRisk * (weights as any).uTurn);
 
     const overallRisk = Math.min(Math.max(weightedRisk, 0), 100);
     
     const analysis = this.generateRiskAnalysis(
-      { pedestrianRisk, maneuveringRisk, infrastructureRisk, trafficRisk, roadContextRisk, intersectionRisk },
+      { pedestrianRisk, maneuveringRisk, infrastructureRisk, trafficRisk, roadContextRisk, intersectionRisk, uTurnRisk },
       vehicle,
       context,
       overallRisk
@@ -198,6 +214,7 @@ export class RiskCalculator {
       trafficRisk,
       roadContextRisk,
       intersectionRisk,
+      uTurnRisk,
       overallRisk,
       roadContext: context,
       ...analysis
@@ -270,9 +287,13 @@ export class RiskCalculator {
     // Commercial loading zone detection
     const commercialLoading = type === 'commercial' && factors.trafficCongestion > 50;
 
+    const hasUTurn = this.detectUTurnFromSegment(segment);
+
     // Detect turn direction
     let turnDirection: RoadContext['turnDirection'];
-    if (description.includes('left')) {
+    if (hasUTurn) {
+        turnDirection = 'u_turn';
+    } else if (description.includes('left')) {
         turnDirection = 'left';
     } else if (description.includes('right')) {
         turnDirection = 'right';
@@ -288,7 +309,8 @@ export class RiskCalculator {
       schoolZone,
       commercialLoading,
       designatedTruckRoute,
-      turnDirection
+      turnDirection,
+      hasUTurn
     };
   }
 
@@ -463,8 +485,8 @@ export class RiskCalculator {
   }
 
   private static calculateIntersectionRisk(
-    segment: RouteSegment, 
-    vehicle: Vehicle, 
+    segment: RouteSegment,
+    vehicle: Vehicle,
     context: RoadContext,
     nextSegmentContext: RoadContext | null
   ): number {
@@ -519,6 +541,14 @@ export class RiskCalculator {
     return Math.min(risk, 100);
   }
 
+  private static calculateUTurnRisk(segment: RouteSegment, vehicle: Vehicle, context: RoadContext): number {
+    if (!context.hasUTurn && !this.detectUTurnFromSegment(segment)) {
+      return 0;
+    }
+    const isLargeVehicle = vehicle.length >= 30;
+    return isLargeVehicle ? 100 : 60;
+  }
+
   private static calculateInfrastructureRisk(clearanceHeight: number, vehicleHeight: number): number {
     if (clearanceHeight === 0) return 0;
     
@@ -567,14 +597,21 @@ export class RiskCalculator {
     vehicle: Vehicle,
     context: RoadContext,
     overallRisk: number
-  ): { primaryConcerns: string[]; recommendations: string[]; riskMitigators: string[] } {
+  ): { primaryConcerns: string[]; recommendations: string[]; riskMitigators: string[]; prohibitedManeuvers: string[] } {
     
     const concerns: string[] = [];
     const recommendations: string[] = [];
     const mitigators: string[] = [];
+    const prohibited: string[] = [];
     const isBus = vehicle.length >= 35;
     
     // Risk analysis
+    if (risks.uTurnRisk > 95 && vehicle.length >= 30) {
+      concerns.push('🚫 PROHIBITED MANEUVER: U-turn detected');
+      recommendations.push('Find alternative route without U-turns');
+      prohibited.push('U-turn');
+    }
+
     if (risks.infrastructureRisk > 80) {
       concerns.push('Critical height clearance issue');
       recommendations.push('Verify exact vehicle height and find alternative route');
@@ -630,7 +667,7 @@ export class RiskCalculator {
       mitigators.push(isBus ? 'Truck-friendly road design with adequate width and turning radii for bus operations' : 'Truck-friendly road design with adequate width and turning radii');
     }
     
-    return { primaryConcerns: concerns, recommendations, riskMitigators: mitigators };
+    return { primaryConcerns: concerns, recommendations, riskMitigators: mitigators, prohibitedManeuvers: prohibited };
   }
 
   // Existing methods with minor updates...
@@ -757,5 +794,21 @@ export class RiskCalculator {
     }
     
     return advice;
+  }
+
+  static isRouteSuitableForLargeVehicle(route: Route, vehicle: Vehicle): { suitable: boolean; reasons: string[]; prohibitedManeuvers: string[] } {
+    if (vehicle.length < 30) {
+      return { suitable: true, reasons: [], prohibitedManeuvers: [] };
+    }
+    const reasons: string[] = [];
+    const prohibited: string[] = [];
+    route.segments.forEach((segment, idx) => {
+      const context = this.analyzeRoadContext(segment);
+      if (context.hasUTurn || this.detectUTurnFromSegment(segment)) {
+        reasons.push(`Segment ${idx + 1}: U-turn detected on ${segment.streetName}`);
+        prohibited.push('U-turn');
+      }
+    });
+    return { suitable: prohibited.length === 0, reasons, prohibitedManeuvers: prohibited };
   }
 }
