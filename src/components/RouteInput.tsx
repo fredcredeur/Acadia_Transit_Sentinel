@@ -106,12 +106,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   const validateStops = (): string | null => {
     if (stops.length === 0) return null;
 
-    const emptyStops = stops.filter(stop => !stop.address.trim());
-    if (emptyStops.length > 0) {
-      return `${emptyStops.length} stop location${emptyStops.length > 1 ? 's' : ''} missing address`;
-    }
-
-    const invalidStops = stops.filter(stop => validateAddress(stop.address) !== null);
+    const invalidStops = stops.filter(stop => stop.address.trim() && validateAddress(stop.address) !== null);
     if (invalidStops.length > 0) {
       return `${invalidStops.length} stop location${invalidStops.length > 1 ? 's have' : ' has'} invalid address`;
     }

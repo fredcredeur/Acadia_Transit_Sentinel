@@ -216,12 +216,11 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
 
       // Add stop markers
       const newStopMarkers: google.maps.Marker[] = [];
-      for (const stop of stops) {
+      const updatedStops: StopLocation[] = [];
+      let stopsChanged = false;
+      for (let i = 0; i < stops.length; i++) {
+        const stop = stops[i];
         try {
-          if (!stop.address.trim() && stop.lat === undefined && stop.lng === undefined) {
-            continue; // skip empty stops
-          }
-
           let stopLocation: google.maps.LatLng | null = null;
           if (stop.lat !== undefined && stop.lng !== undefined) {
             stopLocation = new google.maps.LatLng(stop.lat, stop.lng);
@@ -230,6 +229,17 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             if (stopResults.length > 0) {
               stopLocation = stopResults[0].geometry.location;
             }
+          } else {
+            const ratio = (i + 1) / (stops.length + 1);
+            const lat = originLocation.lat() + (destinationLocation.lat() - originLocation.lat()) * ratio;
+            const lng = originLocation.lng() + (destinationLocation.lng() - originLocation.lng()) * ratio;
+            stopLocation = new google.maps.LatLng(lat, lng);
+            stopsChanged = true;
+            updatedStops.push({ ...stop, lat, lng });
+          }
+
+          if (!stopLocation && updatedStops.length <= i) {
+            updatedStops.push(stop);
           }
 
           if (stopLocation) {
@@ -259,9 +269,20 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
           }
         } catch (error) {
           console.warn(`Failed to geocode stop: ${stop.address}`, error);
+          if (updatedStops.length <= i) updatedStops.push(stop);
         }
       }
       setStopMarkers(newStopMarkers);
+
+      if (stopsChanged && onMapUpdate) {
+        onMapUpdate(
+          origin,
+          destination,
+          updatedStops.length === stops.length ? updatedStops : stops,
+          { lat: originLocation.lat(), lng: originLocation.lng() },
+          { lat: destinationLocation.lat(), lng: destinationLocation.lng() }
+        );
+      }
 
       const bounds = new google.maps.LatLngBounds();
       bounds.extend(originLocation);
@@ -331,9 +352,6 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       // Add stops as waypoints
       for (const stop of stops) {
         try {
-          if (!stop.address.trim() && stop.lat === undefined && stop.lng === undefined) {
-            continue;
-          }
           if (stop.lat !== undefined && stop.lng !== undefined) {
             waypoints.push({ location: new google.maps.LatLng(stop.lat, stop.lng), stopover: true });
           } else if (stop.address.trim()) {
