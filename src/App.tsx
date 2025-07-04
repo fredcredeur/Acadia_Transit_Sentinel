@@ -50,6 +50,8 @@ function App() {
   const [planningDestination, setPlanningDestination] = useState('');
   const [planningStops, setPlanningStops] = useState<StopLocation[]>([]);
   const [planningMapReady, setPlanningMapReady] = useState(false);
+  const [planningOriginCoords, setPlanningOriginCoords] = useState<{ lat: number; lng: number } | undefined>(undefined);
+  const [planningDestinationCoords, setPlanningDestinationCoords] = useState<{ lat: number; lng: number } | undefined>(undefined);
 
   const selectedRoute = routes.find(route => route.id === selectedRouteId);
 
@@ -100,15 +102,25 @@ function App() {
     setPlanningDestination(destination);
     setPlanningStops(stops || []);
     setPlanningMapReady(true);
+    setPlanningOriginCoords(undefined);
+    setPlanningDestinationCoords(undefined);
     if (loopEnabled !== undefined) {
       setIsLoop(loopEnabled);
     }
   };
 
-  const handlePlanningMapUpdate = (origin: string, destination: string, stops: StopLocation[]) => {
+  const handlePlanningMapUpdate = (
+    origin: string,
+    destination: string,
+    stops: StopLocation[],
+    originCoords?: { lat: number; lng: number },
+    destinationCoords?: { lat: number; lng: number }
+  ) => {
     setPlanningOrigin(origin);
     setPlanningDestination(destination);
     setPlanningStops(stops || []);
+    if (originCoords) setPlanningOriginCoords(originCoords);
+    if (destinationCoords) setPlanningDestinationCoords(destinationCoords);
   };
 
   const handleAnalyzeRoutes = async () => {
@@ -406,6 +418,8 @@ function App() {
                   onMapUpdate={handlePlanningMapUpdate}
                   className="h-[600px] rounded-lg shadow-md"
                   initialCenter={initialCenter}
+                  originCoords={planningOriginCoords}
+                  destinationCoords={planningDestinationCoords}
                   isLoop={isLoop}
                 />
 

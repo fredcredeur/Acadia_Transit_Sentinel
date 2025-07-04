@@ -111,6 +111,8 @@ export interface StopLocation {
   id: string;
   address: string;
   name?: string;
+  lat?: number;
+  lng?: number;
   order: number;
   estimatedStopTime?: number; // minutes
 }
