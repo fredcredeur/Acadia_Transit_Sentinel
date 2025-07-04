@@ -20,6 +20,7 @@ interface PlanningMapComponentProps {
   isLoop?: boolean;
   originCoords?: { lat: number; lng: number };
   destinationCoords?: { lat: number; lng: number };
+  showRoute?: boolean;
 }
 
 export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
@@ -32,7 +33,8 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
   initialCenter = { lat: 30.2241, lng: -92.0198 }, // Default to Lafayette, LA
   isLoop = false,
   originCoords,
-  destinationCoords
+  destinationCoords,
+  showRoute = false
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -262,8 +264,10 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
         setLoopMarker(loopIndicator);
       }
 
-      // Draw route
-      await drawRoutePath(originLocation, destinationLocation);
+      // Optionally draw the route preview
+      if (showRoute) {
+        await drawRoutePath(originLocation, destinationLocation);
+      }
 
     } catch (error) {
       console.error('Failed to update map with addresses:', error);
@@ -438,10 +442,12 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
         
         // Update local state
         if (type === 'origin' && originMarker && destinationMarker) {
-          // Redraw route
-          const destPos = destinationMarker.getPosition();
-          if (destPos) {
-            await drawRoutePath(position, destPos);
+          // Update preview if enabled
+          if (showRoute) {
+            const destPos = destinationMarker.getPosition();
+            if (destPos) {
+              await drawRoutePath(position, destPos);
+            }
           }
           
           // If it's a loop route, update the loop marker
@@ -463,10 +469,12 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             );
           }
         } else if (type === 'destination' && originMarker && destinationMarker) {
-          // Redraw route
-          const originPos = originMarker.getPosition();
-          if (originPos) {
-            await drawRoutePath(originPos, position);
+          // Update preview if enabled
+          if (showRoute) {
+            const originPos = originMarker.getPosition();
+            if (originPos) {
+              await drawRoutePath(originPos, position);
+            }
           }
           
           // Notify parent
@@ -488,7 +496,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       console.error(`Failed to reverse geocode ${type} position:`, error);
       setError(`Failed to reverse geocode ${type} position: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [map, origin, destination, stops, onMapUpdate, originMarker, destinationMarker, drawRoutePath, isLoop, loopMarker]);
+  }, [map, origin, destination, stops, onMapUpdate, originMarker, destinationMarker, drawRoutePath, isLoop, loopMarker, showRoute]);
 
   const handleStopMarkerDrag = useCallback(async (
     marker: google.maps.Marker,
@@ -515,8 +523,8 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             : stop
         );
         
-        // Redraw route
-        if (originMarker && destinationMarker) {
+        // Update preview if enabled
+        if (showRoute && originMarker && destinationMarker) {
           const originPos = originMarker.getPosition();
           const destPos = destinationMarker.getPosition();
           if (originPos && destPos) {
@@ -545,7 +553,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
       console.error('Failed to reverse geocode stop position:', error);
       setError(`Failed to reverse geocode stop position: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [map, origin, destination, stops, onMapUpdate, originMarker, destinationMarker, drawRoutePath]);
+  }, [map, origin, destination, stops, onMapUpdate, originMarker, destinationMarker, drawRoutePath, showRoute]);
 
   if (error) {
     return (
@@ -605,8 +613,8 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             Route Planning
           </div>
           <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-            <div>• Drag markers to adjust route</div>
-            <div>• Drag directly onto roads for precise positioning</div>
+            <div>• Drag markers to set start, end and stops</div>
+            <div>• Click Analyze Routes to view suggestions</div>
             {isLoop && (
               <div className="text-amber-600 dark:text-amber-400 font-medium">
                 • Loop route will return to starting point
