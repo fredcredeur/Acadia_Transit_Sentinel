@@ -158,6 +158,7 @@ function App() {
           return analyzed;
         });
         analyzedRoutes.sort((a, b) => a.overallRisk - b.overallRisk);
+        analyzedRoutes = analyzedRoutes.slice(0, 3);
       }
       const largeVehicleAnalysisData = generateLargeVehicleAnalysis(vehicle, analyzedRoutes);
       setRoutes(analyzedRoutes);
@@ -284,6 +285,7 @@ function App() {
         return analyzed;
       });
       analyzedRoutes.sort((a, b) => a.overallRisk - b.overallRisk);
+      analyzedRoutes = analyzedRoutes.slice(0, 3);
       const result = {
         routes: analyzedRoutes,
         recommendedRouteId: analyzedRoutes[0]?.id || '',
@@ -421,6 +423,7 @@ function App() {
                   originCoords={planningOriginCoords}
                   destinationCoords={planningDestinationCoords}
                   isLoop={isLoop}
+                  showRoute={false}
                 />
 
                 {planningMapReady && (

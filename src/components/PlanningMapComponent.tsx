@@ -59,6 +59,19 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
     }
   }, [map, isReady, origin, destination, stops, isLoop]);
 
+  // Clear any existing route preview when disabled
+  useEffect(() => {
+    if (!showRoute) {
+      if (directionsRenderer) {
+        directionsRenderer.setDirections({ routes: [] } as any);
+      }
+      if (routePolyline) {
+        routePolyline.setMap(null);
+        setRoutePolyline(null);
+      }
+    }
+  }, [showRoute, directionsRenderer, routePolyline]);
+
   const initializeMap = useCallback(async () => {
     if (!mapRef.current) {
       setError('Map container not found.');
