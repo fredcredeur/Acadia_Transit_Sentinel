@@ -279,7 +279,7 @@ function App() {
         destination,
         waypoints
       });
-      const analyzedRoutes = directionsResult.routes.map((gRoute, index) => {
+      let analyzedRoutes = directionsResult.routes.map((gRoute, index) => {
         const appRoute = transformGoogleRouteToAppRoute(gRoute, index, stopsToUse);
         const { route: analyzed } = RouteAnalysisService.analyzeRouteRisk(appRoute, vehicle);
         return analyzed;
