@@ -31,7 +31,7 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
   isReady = false,
   onMapUpdate,
   initialCenter = { lat: 30.2241, lng: -92.0198 }, // Default to Lafayette, LA
-  isLoop = false,
+  isLoop = true,
   originCoords,
   destinationCoords,
   showRoute = false
