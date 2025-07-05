@@ -609,26 +609,6 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             { lat: position.lat(), lng: position.lng() }
           );
         }
-      } else if (onMapUpdate) {
-        const coordString = `${position.lat().toFixed(6)}, ${position
-          .lng()
-          .toFixed(6)}`;
-        const updatedStops = stops.map(stop =>
-          stop.id === stopId
-            ? { ...stop, address: coordString, lat: position.lat(), lng: position.lng() }
-            : stop
-        );
-        onMapUpdate(
-          origin,
-          destination,
-          updatedStops,
-          originMarker?.getPosition()
-            ? { lat: originMarker.getPosition()!.lat(), lng: originMarker.getPosition()!.lng() }
-            : undefined,
-          destinationMarker?.getPosition()
-            ? { lat: destinationMarker.getPosition()!.lat(), lng: destinationMarker.getPosition()!.lng() }
-            : undefined
-        );
       }
     } catch (error) {
       console.error(`Failed to reverse geocode ${type} position:`, error);
@@ -728,6 +708,26 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             } : undefined
           );
         }
+      } else if (onMapUpdate) {
+        const coordString = `${position.lat().toFixed(6)}, ${position
+          .lng()
+          .toFixed(6)}`;
+        const updatedStops = stops.map(stop =>
+          stop.id === stopId
+            ? { ...stop, address: coordString, lat: position.lat(), lng: position.lng() }
+            : stop
+        );
+        onMapUpdate(
+          origin,
+          destination,
+          updatedStops,
+          originMarker?.getPosition()
+            ? { lat: originMarker!.getPosition()!.lat(), lng: originMarker!.getPosition()!.lng() }
+            : undefined,
+          destinationMarker?.getPosition()
+            ? { lat: destinationMarker!.getPosition()!.lat(), lng: destinationMarker!.getPosition()!.lng() }
+            : undefined
+        );
       }
     } catch (error) {
       console.error('Failed to reverse geocode stop position:', error);
