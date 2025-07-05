@@ -161,6 +161,7 @@ export class GoogleMapsService {
     avoidTolls?: boolean;
     departureTime?: Date;
     vehicle?: Vehicle;
+    optimizeWaypoints?: boolean;
   }): Promise<google.maps.DirectionsResult> {
     if (!this.isInitialized()) {
       throw new Error('Google Maps service not initialized. Please ensure the API key is configured correctly.');
@@ -200,7 +201,7 @@ export class GoogleMapsService {
           trafficModel: google.maps.TrafficModel.BEST_GUESS
         },
         provideRouteAlternatives: true,
-        optimizeWaypoints: false
+        optimizeWaypoints: request.optimizeWaypoints ?? false
       };
       return new Promise((resolve, reject) => {
         this.directionsService!.route(directionsRequest, (result, status) => {
@@ -385,7 +386,7 @@ export class GoogleMapsService {
     return null;
   }
 
-  private async getConstrainedRoutes(request: { origin: string; destination: string; waypoints?: string[]; avoidHighways?: boolean; avoidTolls?: boolean; vehicle?: Vehicle }, constraints: RoutingConstraints): Promise<google.maps.DirectionsResult> {
+  private async getConstrainedRoutes(request: { origin: string; destination: string; waypoints?: string[]; avoidHighways?: boolean; avoidTolls?: boolean; vehicle?: Vehicle; optimizeWaypoints?: boolean }, constraints: RoutingConstraints): Promise<google.maps.DirectionsResult> {
     const waypoints: google.maps.DirectionsWaypoint[] = [];
     if (request.waypoints) {
       for (const wp of request.waypoints) {
@@ -403,7 +404,7 @@ export class GoogleMapsService {
       travelMode: google.maps.TravelMode.DRIVING,
       avoidHighways: request.avoidHighways || constraints.avoidResidential,
       avoidTolls: request.avoidTolls,
-      optimizeWaypoints: false,
+      optimizeWaypoints: request.optimizeWaypoints ?? false,
       provideRouteAlternatives: true
     };
     return new Promise((resolve, reject) => {
