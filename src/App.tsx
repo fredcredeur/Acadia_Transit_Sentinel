@@ -45,7 +45,7 @@ function App() {
   const [lastAnalyzedDestination, setLastAnalyzedDestination] = useState('');
   const [stops, setStops] = useState<StopLocation[]>([]);
   const [initialCenter, setInitialCenter] = useState({ lat: 39.8283, lng: -98.5795 });
-  const [isLoop, setIsLoop] = useState(false);
+  const [isLoop, setIsLoop] = useState(true);
 
   const [planningOrigin, setPlanningOrigin] = useState('');
   const [planningDestination, setPlanningDestination] = useState('');
@@ -168,7 +168,7 @@ function App() {
           destination: finalDestination,
           waypoints,
           vehicle,
-          optimizeWaypoints: !isLoop
+          optimizeWaypoints: false
         });
         analyzedRoutes = directionsResult.routes.map((gRoute, index) => {
           const appRoute = transformGoogleRouteToAppRoute(gRoute, index, stopsToUse);
@@ -314,7 +314,7 @@ function App() {
         destination: finalDestination,
         waypoints,
         vehicle,
-        optimizeWaypoints: !useLoop
+        optimizeWaypoints: false
       });
       let analyzedRoutes = directionsResult.routes.map((gRoute, index) => {
         const appRoute = transformGoogleRouteToAppRoute(gRoute, index, stopsToUse);

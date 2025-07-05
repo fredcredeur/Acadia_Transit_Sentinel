@@ -23,7 +23,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   initialDestination = '',
   stops = [], // Provide default empty array
   onStopsChange,
-  isLoop = false,
+  isLoop = true,
   onLoopChange
 }) => {
   // Keep local state persistent and sync with props properly
@@ -167,7 +167,7 @@ export const RouteInput: React.FC<RouteInputProps> = ({
   };
 
   const handleLoopChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newIsLoop = e.target.checked;
+    const newIsLoop = !e.target.checked;
     setLocalIsLoop(newIsLoop);
     if (onLoopChange) {
       onLoopChange(newIsLoop);
@@ -293,14 +293,14 @@ export const RouteInput: React.FC<RouteInputProps> = ({
                 <div className="flex items-center">
                   <input
                     type="checkbox"
-                    id="loopRoute"
-                    checked={localIsLoop}
+                    id="disableLoop"
+                    checked={!localIsLoop}
                     onChange={handleLoopChange}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
                     disabled={isLoading || apiStatus !== 'ready'}
                   />
-                  <label htmlFor="loopRoute" className="ml-2 text-sm text-gray-900 dark:text-gray-200">
-                    Loop route (return to starting location)
+                  <label htmlFor="disableLoop" className="ml-2 text-sm text-gray-900 dark:text-gray-200">
+                    Disable loop route
                   </label>
                 </div>
                 
