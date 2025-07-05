@@ -475,24 +475,55 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
   }, [map, directionsRenderer, isLoop, stops, routePolyline]);
 
   const handleMarkerDrag = useCallback(async (
-    marker: google.maps.Marker, 
+    marker: google.maps.Marker,
     type: 'origin' | 'destination'
   ) => {
     const position = marker.getPosition();
     if (!position || !map) return;
 
+    // Immediately update parent with new coordinates so analysis uses them even
+    // if reverse geocoding hasn't finished yet
+    if (onMapUpdate) {
+      if (type === 'origin') {
+        onMapUpdate(
+          origin,
+          destination,
+          stops,
+          { lat: position.lat(), lng: position.lng() },
+          destinationMarker?.getPosition()
+            ? {
+                lat: destinationMarker!.getPosition()!.lat(),
+                lng: destinationMarker!.getPosition()!.lng()
+              }
+            : undefined
+        );
+      } else {
+        onMapUpdate(
+          origin,
+          destination,
+          stops,
+          originMarker?.getPosition()
+            ? {
+                lat: originMarker!.getPosition()!.lat(),
+                lng: originMarker!.getPosition()!.lng()
+              }
+            : undefined,
+          { lat: position.lat(), lng: position.lng() }
+        );
+      }
+    }
+
     try {
       // Reverse geocode to get address
       const googleMapsService = GoogleMapsService.getInstance();
       const results = await googleMapsService.reverseGeocode(
-        position.lat(), 
+        position.lat(),
         position.lng()
       );
 
       if (results.length > 0) {
         const address = results[0].formatted_address;
-        
-        // Update local state
+
         if (type === 'origin' && originMarker && destinationMarker) {
           // Update preview if enabled
           if (showRoute) {
@@ -501,23 +532,25 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
               await drawRoutePath(position, destPos);
             }
           }
-          
+
           // If it's a loop route, update the loop marker
           if (isLoop && loopMarker) {
             loopMarker.setPosition(position);
           }
-          
-          // Notify parent
+
+          // Notify parent with updated address
           if (onMapUpdate) {
             onMapUpdate(
               address,
               destination,
               stops,
               { lat: position.lat(), lng: position.lng() },
-              destinationMarker.getPosition() ? {
-                lat: destinationMarker.getPosition()!.lat(),
-                lng: destinationMarker.getPosition()!.lng(),
-              } : undefined
+              destinationMarker?.getPosition()
+                ? {
+                    lat: destinationMarker!.getPosition()!.lat(),
+                    lng: destinationMarker!.getPosition()!.lng()
+                  }
+                : undefined
             );
           }
         } else if (type === 'destination' && originMarker && destinationMarker) {
@@ -528,27 +561,76 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
               await drawRoutePath(originPos, position);
             }
           }
-          
-          // Notify parent
+
+          // Notify parent with updated address
           if (onMapUpdate) {
             onMapUpdate(
               origin,
               address,
               stops,
-              originMarker.getPosition() ? {
-                lat: originMarker.getPosition()!.lat(),
-                lng: originMarker.getPosition()!.lng(),
-              } : undefined,
+              originMarker?.getPosition()
+                ? {
+                    lat: originMarker!.getPosition()!.lat(),
+                    lng: originMarker!.getPosition()!.lng()
+                  }
+                : undefined,
               { lat: position.lat(), lng: position.lng() }
             );
           }
         }
+      } else if (onMapUpdate) {
+        const coordString = `${position.lat().toFixed(6)}, ${position
+          .lng()
+          .toFixed(6)}`;
+        if (type === 'origin') {
+          onMapUpdate(
+            coordString,
+            destination,
+            stops,
+            { lat: position.lat(), lng: position.lng() },
+            destinationMarker?.getPosition()
+              ? {
+                  lat: destinationMarker.getPosition()!.lat(),
+                  lng: destinationMarker.getPosition()!.lng()
+                }
+              : undefined
+          );
+        } else {
+          onMapUpdate(
+            origin,
+            coordString,
+            stops,
+            originMarker?.getPosition()
+              ? {
+                  lat: originMarker.getPosition()!.lat(),
+                  lng: originMarker.getPosition()!.lng()
+                }
+              : undefined,
+            { lat: position.lat(), lng: position.lng() }
+          );
+        }
       }
     } catch (error) {
       console.error(`Failed to reverse geocode ${type} position:`, error);
-      setError(`Failed to reverse geocode ${type} position: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setError(
+        `Failed to reverse geocode ${type} position: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      );
     }
-  }, [map, origin, destination, stops, onMapUpdate, originMarker, destinationMarker, drawRoutePath, isLoop, loopMarker, showRoute]);
+  }, [
+    map,
+    origin,
+    destination,
+    stops,
+    onMapUpdate,
+    originMarker,
+    destinationMarker,
+    drawRoutePath,
+    isLoop,
+    loopMarker,
+    showRoute
+  ]);
 
   const handleStopMarkerDrag = useCallback(async (
     marker: google.maps.Marker,
@@ -556,6 +638,32 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
   ) => {
     const position = marker.getPosition();
     if (!position || !map) return;
+
+    // Immediately update parent with new coordinates for this stop
+    if (onMapUpdate) {
+      const updatedStopsTemp = stops.map(stop =>
+        stop.id === stopId
+          ? { ...stop, lat: position.lat(), lng: position.lng() }
+          : stop
+      );
+      onMapUpdate(
+        origin,
+        destination,
+        updatedStopsTemp,
+        originMarker?.getPosition()
+          ? {
+              lat: originMarker!.getPosition()!.lat(),
+              lng: originMarker!.getPosition()!.lng()
+            }
+          : undefined,
+        destinationMarker?.getPosition()
+          ? {
+              lat: destinationMarker!.getPosition()!.lat(),
+              lng: destinationMarker!.getPosition()!.lng()
+            }
+          : undefined
+      );
+    }
 
     try {
       // Reverse geocode to get address
@@ -600,6 +708,26 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
             } : undefined
           );
         }
+      } else if (onMapUpdate) {
+        const coordString = `${position.lat().toFixed(6)}, ${position
+          .lng()
+          .toFixed(6)}`;
+        const updatedStops = stops.map(stop =>
+          stop.id === stopId
+            ? { ...stop, address: coordString, lat: position.lat(), lng: position.lng() }
+            : stop
+        );
+        onMapUpdate(
+          origin,
+          destination,
+          updatedStops,
+          originMarker?.getPosition()
+            ? { lat: originMarker!.getPosition()!.lat(), lng: originMarker!.getPosition()!.lng() }
+            : undefined,
+          destinationMarker?.getPosition()
+            ? { lat: destinationMarker!.getPosition()!.lat(), lng: destinationMarker!.getPosition()!.lng() }
+            : undefined
+        );
       }
     } catch (error) {
       console.error('Failed to reverse geocode stop position:', error);
