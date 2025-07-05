@@ -83,6 +83,50 @@ export class RiskCalculator {
            streetName.includes('u-turn');
   }
 
+  private static haversineDistance(
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number
+  ): number {
+    const R = 6371e3;
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const dphi = ((lat2 - lat1) * Math.PI) / 180;
+    const dlambda = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dphi / 2) * Math.sin(dphi / 2) +
+      Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlambda / 2) * Math.sin(dlambda / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  private static calculateTurnAngle(prev: RouteSegment, curr: RouteSegment): number {
+    const v1 = {
+      x: prev.endLng - prev.startLng,
+      y: prev.endLat - prev.startLat
+    };
+    const v2 = {
+      x: curr.endLng - curr.startLng,
+      y: curr.endLat - curr.startLat
+    };
+    const dot = v1.x * v2.x + v1.y * v2.y;
+    const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+    const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+    if (mag1 === 0 || mag2 === 0) return 0;
+    const cos = Math.min(Math.max(dot / (mag1 * mag2), -1), 1);
+    return (Math.acos(cos) * 180) / Math.PI;
+  }
+
+  private static detectBacktracking(prev: RouteSegment, curr: RouteSegment): boolean {
+    const sameStart =
+      this.haversineDistance(prev.endLat, prev.endLng, curr.startLat, curr.startLng) < 30;
+    const angle = this.calculateTurnAngle(prev, curr);
+    const returnDist = this.haversineDistance(prev.startLat, prev.startLng, curr.endLat, curr.endLng);
+    const sameStreet = prev.streetName.toLowerCase() === curr.streetName.toLowerCase();
+    return sameStart && angle > 150 && returnDist < 50 && sameStreet;
+  }
+
   // 🔧 CONSISTENT RISK FACTORS - Generate deterministic risk factors based on segment characteristics
   private static generateConsistentRiskFactors(segment: RouteSegment): typeof segment.riskFactors {
     const streetName = segment.streetName.toLowerCase();
@@ -808,6 +852,10 @@ export class RiskCalculator {
       if (context.hasUTurn || this.detectUTurnFromSegment(segment)) {
         reasons.push(`Segment ${idx + 1}: U-turn detected on ${segment.streetName}`);
         prohibited.push('U-turn');
+      }
+      if (idx > 0 && this.detectBacktracking(route.segments[idx - 1], segment)) {
+        reasons.push(`Segment ${idx + 1}: backtracking detected on ${segment.streetName}`);
+        prohibited.push('Backtracking');
       }
     });
     return { suitable: prohibited.length === 0, reasons, prohibitedManeuvers: prohibited };

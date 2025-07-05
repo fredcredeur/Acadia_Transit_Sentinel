@@ -481,6 +481,15 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
     const position = marker.getPosition();
     if (!position || !map) return;
 
+    // Clear current route preview while dragging
+    if (directionsRenderer) {
+      directionsRenderer.setDirections({ routes: [] } as any);
+    }
+    if (routePolyline) {
+      routePolyline.setMap(null);
+      setRoutePolyline(null);
+    }
+
     // Immediately update parent with new coordinates so analysis uses them even
     // if reverse geocoding hasn't finished yet
     if (onMapUpdate) {
@@ -638,6 +647,15 @@ export const PlanningMapComponent: React.FC<PlanningMapComponentProps> = ({
   ) => {
     const position = marker.getPosition();
     if (!position || !map) return;
+
+    // Clear current route preview while dragging
+    if (directionsRenderer) {
+      directionsRenderer.setDirections({ routes: [] } as any);
+    }
+    if (routePolyline) {
+      routePolyline.setMap(null);
+      setRoutePolyline(null);
+    }
 
     // Immediately update parent with new coordinates for this stop
     if (onMapUpdate) {

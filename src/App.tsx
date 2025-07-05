@@ -135,38 +135,40 @@ function App() {
     setError(null);
     try {
       setRouteFilterWarnings([]);
-      setRouteFilterWarnings([]);
       let stopsToUse = planningStops || [];
-      if (isLoop && planningOrigin) {
-        const loopStop: StopLocation = {
-          id: 'loop-return',
-          address: planningOrigin.trim(),
-          order: stopsToUse.length,
-          estimatedStopTime: 5,
-          name: 'Return to Start'
-        };
-        stopsToUse = [...stopsToUse, loopStop];
+
+      // Prepare origin/destination strings with coordinates if available
+      let finalOrigin = planningOriginCoords
+        ? `${planningOriginCoords.lat},${planningOriginCoords.lng}`
+        : planningOrigin;
+      let finalDestination = planningDestinationCoords
+        ? `${planningDestinationCoords.lat},${planningDestinationCoords.lng}`
+        : planningDestination;
+
+      // Convert stops to waypoints
+      let waypoints = stopsToUse.map(s =>
+        s.lat !== undefined && s.lng !== undefined
+          ? { location: `${s.lat},${s.lng}`, stopover: true }
+          : { location: s.address, stopover: true }
+      );
+
+      // Loop route logic: destination becomes a waypoint and final destination returns to origin
+      if (isLoop) {
+        if (finalOrigin !== finalDestination) {
+          waypoints.push({ location: finalDestination, stopover: true });
+        }
+        finalDestination = finalOrigin;
       }
       let analyzedRoutes: Route[] = [];
       if (useRealData) {
         const googleMapsService = GoogleMapsService.getInstance();
         await googleMapsService.initialize();
-        const waypoints = stopsToUse.map(s =>
-          s.lat !== undefined && s.lng !== undefined
-            ? `${s.lat},${s.lng}`
-            : s.address
-        );
         const directionsResult = await googleMapsService.getRoutes({
-          origin:
-            planningOriginCoords !== undefined
-              ? `${planningOriginCoords.lat},${planningOriginCoords.lng}`
-              : planningOrigin,
-          destination:
-            planningDestinationCoords !== undefined
-              ? `${planningDestinationCoords.lat},${planningDestinationCoords.lng}`
-              : planningDestination,
+          origin: finalOrigin,
+          destination: finalDestination,
           waypoints,
-          vehicle
+          vehicle,
+          optimizeWaypoints: !isLoop
         });
         analyzedRoutes = directionsResult.routes.map((gRoute, index) => {
           const appRoute = transformGoogleRouteToAppRoute(gRoute, index, stopsToUse);
@@ -288,27 +290,31 @@ function App() {
     try {
       let stopsToUse = stops || [];
       const useLoop = loopEnabled !== undefined ? loopEnabled : isLoop;
-      if (useLoop && origin) {
-        const loopStop: StopLocation = {
-          id: 'loop-return',
-          address: origin.trim(),
-          order: stopsToUse.length,
-          estimatedStopTime: 5,
-          name: 'Return to Start'
-        };
-        const hasLoopStop = stopsToUse.some(stop => stop.id === 'loop-return');
-        if (!hasLoopStop) {
-          stopsToUse = [...stopsToUse, loopStop];
+
+      let finalOrigin = origin;
+      let finalDestination = destination;
+
+      let waypoints = stopsToUse.map(s =>
+        s.lat !== undefined && s.lng !== undefined
+          ? { location: `${s.lat},${s.lng}`, stopover: true }
+          : { location: s.address, stopover: true }
+      );
+
+      if (useLoop) {
+        if (finalOrigin !== finalDestination) {
+          waypoints.push({ location: finalDestination, stopover: true });
         }
+        finalDestination = finalOrigin;
       }
+
       const googleMapsService = GoogleMapsService.getInstance();
       await googleMapsService.initialize();
-      const waypoints = stopsToUse.map(s => s.address);
       const directionsResult = await googleMapsService.getRoutes({
-        origin,
-        destination,
+        origin: finalOrigin,
+        destination: finalDestination,
         waypoints,
-        vehicle
+        vehicle,
+        optimizeWaypoints: !useLoop
       });
       let analyzedRoutes = directionsResult.routes.map((gRoute, index) => {
         const appRoute = transformGoogleRouteToAppRoute(gRoute, index, stopsToUse);
@@ -357,10 +363,8 @@ function App() {
     if (!lastAnalyzedOrigin || !lastAnalyzedDestination) return '';
     let text = `${lastAnalyzedOrigin} → ${lastAnalyzedDestination}`;
     if (stops.length > 0) {
-      const isLoopRoute = stops.some(stop => stop.id === 'loop-return');
-      if (isLoopRoute) {
-        const regularStops = stops.filter(stop => stop.id !== 'loop-return');
-        text += ` (${regularStops.length} stop${regularStops.length !== 1 ? 's' : ''} + loop)`;
+      if (isLoop) {
+        text += ` (${stops.length} stop${stops.length !== 1 ? 's' : ''} + loop)`;
       } else {
         text += ` (${stops.length} stop${stops.length > 1 ? 's' : ''})`;
       }
