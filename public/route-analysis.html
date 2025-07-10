@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Route Analysis - Acadia Transit Sentinel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; color: #334155; line-height: 1.6; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; padding: 2rem; border-radius: 12px; margin-bottom: 2rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .header h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .header p { font-size: 1.1rem; opacity: 0.9; }
+        .analysis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
+        .map-container { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); overflow: hidden; }
+        .map-header { background: #f1f5f9; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
+        .map-header h3 { color: #1e293b; font-size: 1.2rem; font-weight: 600; }
+        .map-content { height: 400px; background: #e2e8f0; display: flex; align-items: center; justify-content: center; color: #64748b; font-size: 1.1rem; }
+        .routes-panel { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); overflow: hidden; }
+        .routes-header { background: #f1f5f9; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
+        .routes-header h3 { color: #1e293b; font-size: 1.2rem; font-weight: 600; }
+        .route-card { padding: 1.5rem; border-bottom: 1px solid #f1f5f9; transition: all 0.3s ease; }
+        .route-card:last-child { border-bottom: none; }
+        .route-card:hover { background: #f8fafc; transform: translateX(4px); }
+        .route-rank { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+        .rank-badge { width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white; font-size: 0.9rem; }
+        .rank-1 { background: #10b981; }
+        .rank-2 { background: #f59e0b; }
+        .rank-3 { background: #ef4444; }
+        .route-title { font-size: 1.1rem; font-weight: 600; color: #1e293b; }
+        .route-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; margin-top: 1rem; }
+        .stat-item { text-align: center; padding: 0.75rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+        .stat-value { font-size: 1.2rem; font-weight: 700; color: #1e293b; display: block; }
+        .stat-label { font-size: 0.85rem; color: #64748b; margin-top: 0.25rem; }
+        .risk-indicator { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; }
+        .risk-bar { flex: 1; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+        .risk-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+        .risk-low { background: #10b981; }
+        .risk-medium { background: #f59e0b; }
+        .risk-high { background: #ef4444; }
+        .risk-text { font-size: 0.9rem; font-weight: 600; min-width: 60px; }
+        .controls { background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin-bottom: 2rem; }
+        .controls h3 { color: #1e293b; font-size: 1.2rem; font-weight: 600; margin-bottom: 1rem; }
+        .control-group { display: flex; gap: 1rem; flex-wrap: wrap; }
+        .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; transform: translateY(-2px); }
+        .btn-secondary { background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
+        .btn-secondary:hover { background: #e2e8f0; }
+        .summary-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .summary-card { background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); text-align: center; }
+        .summary-card h4 { color: #64748b; font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem; }
+        .summary-value { font-size: 2rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem; }
+        .summary-change { font-size: 0.9rem; font-weight: 600; }
+        .change-positive { color: #10b981; }
+        .change-negative { color: #ef4444; }
+        @media (max-width: 768px) {
+            .analysis-grid { grid-template-columns: 1fr; }
+            .control-group { flex-direction: column; }
+            .btn { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Route Analysis</h1>
+            <p>Comprehensive safety analysis for large vehicle routes in Acadia National Park</p>
+        </div>
+        <div class="controls">
+            <h3>Analysis Controls</h3>
+            <div class="control-group">
+                <button class="btn btn-primary" onclick="refreshAnalysis()">🔄 Refresh Analysis</button>
+                <button class="btn btn-secondary" onclick="exportResults()">📊 Export Results</button>
+                <button class="btn btn-secondary" onclick="showSettings()">⚙️ Settings</button>
+            </div>
+        </div>
+        <div class="summary-stats">
+            <div class="summary-card">
+                <h4>Routes Analyzed</h4>
+                <div class="summary-value">3</div>
+                <div class="summary-change change-positive">+0 new routes</div>
+            </div>
+            <div class="summary-card">
+                <h4>Average Risk Score</h4>
+                <div class="summary-value">6.2</div>
+                <div class="summary-change change-positive">-0.3 improvement</div>
+            </div>
+            <div class="summary-card">
+                <h4>Total Distance</h4>
+                <div class="summary-value">47.3</div>
+                <div class="summary-change">miles analyzed</div>
+            </div>
+        </div>
+        <div class="analysis-grid">
+            <div class="map-container">
+                <div class="map-header"><h3>Route Visualization</h3></div>
+                <div class="map-content">Interactive route map will load here</div>
+            </div>
+            <div class="routes-panel">
+                <div class="routes-header"><h3>Ranked Routes</h3></div>
+                <div class="route-card">
+                    <div class="route-rank">
+                        <div class="rank-badge rank-1">1</div>
+                        <div class="route-title">Route Alpha - Safest</div>
+                    </div>
+                    <div class="route-stats">
+                        <div class="stat-item"><span class="stat-value">4.2</span><span class="stat-label">Risk Score</span></div>
+                        <div class="stat-item"><span class="stat-value">15.8</span><span class="stat-label">Miles</span></div>
+                        <div class="stat-item"><span class="stat-value">28</span><span class="stat-label">Minutes</span></div>
+                    </div>
+                    <div class="risk-indicator">
+                        <div class="risk-bar"><div class="risk-fill risk-low" style="width: 42%"></div></div>
+                        <span class="risk-text" style="color: #10b981;">Low Risk</span>
+                    </div>
+                </div>
+                <div class="route-card">
+                    <div class="route-rank">
+                        <div class="rank-badge rank-2">2</div>
+                        <div class="route-title">Route Beta - Moderate</div>
+                    </div>
+                    <div class="route-stats">
+                        <div class="stat-item"><span class="stat-value">6.7</span><span class="stat-label">Risk Score</span></div>
+                        <div class="stat-item"><span class="stat-value">14.2</span><span class="stat-label">Miles</span></div>
+                        <div class="stat-item"><span class="stat-value">22</span><span class="stat-label">Minutes</span></div>
+                    </div>
+                    <div class="risk-indicator">
+                        <div class="risk-bar"><div class="risk-fill risk-medium" style="width: 67%"></div></div>
+                        <span class="risk-text" style="color: #f59e0b;">Medium Risk</span>
+                    </div>
+                </div>
+                <div class="route-card">
+                    <div class="route-rank">
+                        <div class="rank-badge rank-3">3</div>
+                        <div class="route-title">Route Gamma - Caution</div>
+                    </div>
+                    <div class="route-stats">
+                        <div class="stat-item"><span class="stat-value">8.9</span><span class="stat-label">Risk Score</span></div>
+                        <div class="stat-item"><span class="stat-value">17.3</span><span class="stat-label">Miles</span></div>
+                        <div class="stat-item"><span class="stat-value">35</span><span class="stat-label">Minutes</span></div>
+                    </div>
+                    <div class="risk-indicator">
+                        <div class="risk-bar"><div class="risk-fill risk-high" style="width: 89%"></div></div>
+                        <span class="risk-text" style="color: #ef4444;">High Risk</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        function refreshAnalysis(){ console.log('Refreshing route analysis...'); }
+        function exportResults(){ console.log('Exporting analysis results...'); }
+        function showSettings(){ console.log('Opening settings...'); }
+        document.addEventListener('DOMContentLoaded',function(){ const routeCards=document.querySelectorAll('.route-card'); routeCards.forEach(card=>{ card.addEventListener('click',function(){ routeCards.forEach(c=>c.classList.remove('active')); this.classList.add('active'); console.log('Route selected:',this.querySelector('.route-title').textContent); }); });});
+    </script>
+</body>
+</html>
