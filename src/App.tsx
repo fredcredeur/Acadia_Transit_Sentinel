@@ -515,6 +515,9 @@ function App() {
           </div>
         ) : (
           <div className="space-y-8">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+              Route Analysis
+            </h2>
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
               <div className="xl:col-span-1 space-y-6">
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300">
@@ -531,7 +534,7 @@ function App() {
                   </div>
                   <button
                     onClick={() => setCurrentView('planning')}
-                    className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-all duration-200 flex items-center justify-center gap-2 shadow-sm hover:shadow-md font-medium"
+                    className="mt-4 w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-all duration-200 flex items-center justify-center gap-2 shadow-sm hover:shadow-md font-medium"
                   >
                     <Map className="w-5 h-5" />
                     New Route
